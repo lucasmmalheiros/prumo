@@ -27,7 +27,7 @@ edit(path.join(main, 'AndroidManifest.xml'), (x) => {
   }
   // Compartilhar
   if (!x.includes('android.intent.action.SEND"')) {
-    const types = ['text/*', 'application/csv', 'application/vnd.ms-excel', 'application/x-ofx', 'application/ofx', 'application/vnd.intu.qfx', 'application/xml', 'application/octet-stream'];
+    const types = ['application/pdf', 'text/*', 'application/csv', 'application/vnd.ms-excel', 'application/x-ofx', 'application/ofx', 'application/vnd.intu.qfx', 'application/xml', 'application/octet-stream'];
     x = x.replace('</intent-filter>', `</intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

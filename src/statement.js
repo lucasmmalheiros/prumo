@@ -72,7 +72,11 @@
       iIn = header.findIndex((c) => /(entrada|credito|credit)/.test(c) && !/data/.test(c));
       iOut = header.findIndex((c) => /(saida|debito|debit)/.test(c) && !/data/.test(c));
       iAmt = header.findIndex((c) => /(valor|amount|value|quantia)/.test(c));
-      iDesc = header.findIndex((c) => /(descri|histor|lancamento|title|titulo|estabelecimento|memo|detalhe|identifica)/.test(c) && !/^(data|date)/.test(c));
+      // Descrição antes de identificador
+      for (const re of [/(descri|histor)/, /(estabelecimento|title|titulo|lancamento|memo|detalhe)/, /identifica/]) {
+        iDesc = header.findIndex((c) => re.test(c) && !/^(data|date)/.test(c));
+        if (iDesc !== -1) break;
+      }
       if (iDesc === -1) iDesc = header.findIndex((c, i) => i !== iDate && i !== iAmt);
     } else {
       const cells = splitCSV(lines[0], sep);
@@ -119,10 +123,107 @@
     ['lazer', /(cinema|ingresso|sympla|show|bar |cervej|steam|playstation|xbox|nintendo|viagem|hotel|airbnb|booking|decolar)/],
     ['educacao', /(escola|faculdade|curso|udemy|alura|livraria|livro|mensalidade)/],
   ];
-  function guessCategory(desc) {
+  const Merchants = typeof module !== 'undefined' && module.exports ? require('./merchants.js') : root.PrumoMerchants;
+
+  // Nome do estabelecimento
+  const BOILER = /^(compra (no|com|de) (debito|credito|cartao)( via [a-z]+)?|compra|transferencia (enviada|recebida)( pelo pix)?|transf (enviada|recebida)|pix (enviado|recebido)|pagamento (de boleto )?(efetuado|realizado)?|pagto|pag|pg|debito automatico|deb aut|debito|credito|ted|doc|envio|recebimento)\b[\s\-:*]*/;
+  function merchantKey(desc) {
+    let t = norm(desc).replace(/[•*]/g, ' ');
+    for (let i = 0; i < 3; i++) t = t.replace(BOILER, '').replace(/^(para|de|em|no|na)\s+/, '');
+    t = t.split(/\s+-\s+/)[0].replace(/\b(ltda|eireli|me|epp|s ?a|cia|comercio|servicos|com)\b/g, ' ').replace(/[^a-z& ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return t.slice(0, 32);
+  }
+
+  // learned: { nome do estabelecimento: categoria } aprendido com o que a pessoa escolheu antes
+  function guessCategory(desc, learned) {
+    const key = merchantKey(desc);
+    if (learned && key && learned[key]) return learned[key];
+    const found = Merchants ? Merchants.find(desc) : null;
+    if (found) return found;
     const t = ' ' + norm(desc) + ' ';
     const hit = RULES.find(([, re]) => re.test(t));
     return hit ? hit[0] : 'outros';
+  }
+
+  // PDF
+  const MES = { jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6, jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12 };
+  const MONEY = /([-−+]\s?)?(R\$\s?)?([-−]\s?)?(\d{1,3}(?:\.\d{3})*,\d{2})(\s?[DC](?![a-zà-ú])|-(?!\d))?/gi;
+  const SKIP = /(saldo|total d|^total|resumo|limite|pagamento minimo|valor minimo|vencimento|pagina \d|ouvidoria|central de (atendimento|relacionamento)|cnpj|taxa de juros|custo efetivo|\bcet\b|encargos (de|do)|proxima fatura|fatura anterior|periodo|emitido em|extrato gerado|movimentacoes|lancamentos futuros|tem alguma duvida)/;
+
+  function pdfDate(s, refYear, refMonth) {
+    let m;
+    const t = norm(s);
+    if ((m = t.match(/^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?\b/))) {
+      const mo = Number(m[2]);
+      let y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : refYear;
+      if (!m[3] && refMonth && mo > refMonth + 1) y -= 1;
+      if (mo < 1 || mo > 12 || Number(m[1]) < 1 || Number(m[1]) > 31) return null;
+      return { date: `${y}-${pad2(mo)}-${pad2(m[1])}`, len: m[0].length };
+    }
+    if ((m = t.match(/^(\d{1,2})(?: de)? (jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*\.?(?:(?: de)? (\d{4}))?\b/))) {
+      const mo = MES[m[2]];
+      let y = m[3] ? Number(m[3]) : refYear;
+      if (!m[3] && refMonth && mo > refMonth + 1) y -= 1;
+      return { date: `${y}-${pad2(mo)}-${pad2(m[1])}`, len: m[0].length };
+    }
+    return null;
+  }
+
+  // lines: texto de cada linha do PDF, na ordem da página
+  function parsePDFLines(lines) {
+    const all = norm(lines.join(' \n '));
+    const cardScore = (all.match(/fatura|pagamento minimo|limite (total|disponivel)|cartao de credito|compras parceladas/g) || []).length;
+    const bankScore = (all.match(/saldo (inicial|final|do dia|anterior|em conta)|extrato (de conta|da conta)|conta corrente|total de (entradas|saidas)/g) || []).length;
+    const card = cardScore > bankScore;
+    // ano e mês de referência
+    const full = [...all.matchAll(/\b(\d{1,2})[/.-](\d{1,2})[/.-](20\d{2})\b|\b(\d{1,2}) (jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]* (?:de )?(20\d{2})\b/g)]
+      .map((m) => (m[3] ? [Number(m[3]), Number(m[2])] : [Number(m[6]), MES[m[5]]])).filter(([, mo]) => mo >= 1 && mo <= 12).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const ref = full.length ? full[full.length - 1] : [new Date().getFullYear(), new Date().getMonth() + 1];
+    const items = [];
+    let cur = null, section = 0;
+    for (const raw of lines) {
+      let line = String(raw).replace(/\s+/g, ' ').trim();
+      if (!line) continue;
+      const d = pdfDate(line, ref[0], ref[1]);
+      if (d) { cur = d.date; line = line.slice(d.len).trim(); }
+      const n = norm(line);
+      if (/^(total de )?(entradas|creditos|recebimentos)\b/.test(n)) section = 1;
+      else if (/^(total de )?(saidas|debitos|pagamentos e transferencias)\b/.test(n)) section = -1;
+      if (!line || SKIP.test(n)) continue;
+      const money = [...line.matchAll(MONEY)];
+      if (!money.length) { if (/[a-zà-ú]{3}/i.test(line)) items.push({ type: 'text', text: line, date: cur }); continue; }
+      if (/\b(usd|us\$|eur|cotacao)\b/i.test(line) && money.length > 1) money.splice(1);
+      const tok = money.length >= 2 ? money[money.length - 2] : money[0];
+      const value = parseAmount(tok[4]);
+      const explicit = /[-−]/.test((tok[1] || '') + (tok[3] || '')) || /^-$|D/i.test((tok[5] || '').trim()) ? -1 : /\+/.test(tok[1] || '') || /C/i.test((tok[5] || '').trim()) ? 1 : 0;
+      let desc = line;
+      for (const m of money) desc = desc.replace(m[0], ' ');
+      desc = desc.replace(/\s+/g, ' ').replace(/^[\s\-–•|:]+|[\s\-–•|:]+$/g, '').trim();
+      items.push({ type: 'tx', date: cur, value, explicit, section, desc });
+    }
+    // Descrição em mais de uma linha
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it.type !== 'text') continue;
+      const next = items[i + 1], prev = items[i - 1];
+      if (next && next.type === 'tx' && (next.desc.replace(/[^a-z]/gi, '').length < 4)) next.desc = (it.text + ' ' + next.desc).trim();
+      else if (prev && prev.type === 'tx' && !prev.joined) { prev.desc = `${prev.desc} - ${it.text}`; prev.joined = true; }
+    }
+    const rows = [];
+    for (const it of items) {
+      if (it.type !== 'tx' || !it.date || !it.value || it.desc.replace(/[^a-z]/gi, '').length < 3) continue;
+      const t = norm(it.desc);
+      let sign = it.explicit;
+      if (card) {
+        if (!sign) sign = /(pagamento|estorno|credito|reembolso|cashback|desconto)/.test(t) ? -1 : 1;
+      } else if (!sign) {
+        if (it.section) sign = it.section;
+        else sign = /(recebid|deposito|estorno|reembolso|salario|rendimento|resgate|credito em conta|devolucao)/.test(t) ? 1 : -1;
+      }
+      rows.push({ date: it.date, desc: it.desc.slice(0, 160), amount: Math.round(sign * it.value * 100) / 100 });
+    }
+    rows.forEach((r) => { r.key = `${r.date}|${r.amount.toFixed(2)}|${norm(r.desc).slice(0, 40)}`; });
+    return { kind: 'PDF', rows, card };
   }
 
   function similar(a, b) {
@@ -131,6 +232,6 @@
     return wb.some((w) => wa.has(w) || [...wa].some((x) => x.startsWith(w) || w.startsWith(x)));
   }
 
-  const api = { parse, parseAmount, parseDate, guessCategory, similar, norm };
+  const api = { parse, parsePDFLines, parseAmount, parseDate, guessCategory, merchantKey, similar, norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Statement = api;
 })(typeof window !== 'undefined' ? window : globalThis);

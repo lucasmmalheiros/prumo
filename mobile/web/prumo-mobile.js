@@ -108,10 +108,14 @@
   async function purgeBackups() { for (const b of await listBackups()) await fs.remove(`${BACKUPS}/${b.name}`); }
 
   // Arquivos externos
-  const SHARE_ERRORS = { grande: 'Arquivo grande demais (máximo 5 MB).', arquivo: 'Envie o arquivo do extrato, em OFX ou CSV.', leitura: 'Não consegui abrir esse arquivo.' };
+  const SHARE_ERRORS = { grande: 'Arquivo grande demais (máximo 5 MB).', arquivo: 'Envie o arquivo do extrato, em PDF, OFX ou CSV.', leitura: 'Não consegui abrir esse arquivo.' };
   function decodeText(buf) {
     const text = new TextDecoder('utf-8').decode(buf);
     return text.includes('�') ? new TextDecoder('windows-1252').decode(buf) : text; // muitos bancos usam Windows-1252
+  }
+  function statementFile(name, bytes) {
+    const pdf = /\.pdf$/i.test(name || '') || (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46);
+    return pdf ? { ok: true, name, bytes } : { ok: true, name, text: decodeText(bytes) };
   }
   function pickFile() {
     return new Promise((resolve) => {
@@ -267,14 +271,14 @@
       const file = await pickFile();
       if (!file) return { ok: false };
       if (file.size > 5 * 1024 * 1024) return { ok: false, error: 'Arquivo grande demais (máximo 5 MB).' };
-      return { ok: true, name: file.name, text: decodeText(await file.arrayBuffer()) };
+      return statementFile(file.name, new Uint8Array(await file.arrayBuffer()));
     },
     warmStart: () => call('PrumoApp', 'warmStart').then((r) => r.warm, () => false),
     onShared: (receive) => {
       const take = async () => {
         const r = await call('PrumoApp', 'takeShared');
         if (r.error) receive({ ok: false, error: SHARE_ERRORS[r.error] });
-        else if (r.data) receive({ ok: true, name: r.name, text: decodeText(unb64(r.data)) });
+        else if (r.data) receive(statementFile(r.name, new Uint8Array(unb64(r.data))));
       };
       Cap.nativeCallback('PrumoApp', 'addListener', { eventName: 'arrived' }, take);
       take();

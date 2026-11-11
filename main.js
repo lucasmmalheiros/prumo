@@ -306,12 +306,13 @@ ipcMain.handle('import:pick', guard(async () => {
   const res = await dialog.showOpenDialog(win, {
     title: 'Importar extrato do banco',
     properties: ['openFile'],
-    filters: [{ name: 'Extrato (OFX ou CSV)', extensions: ['ofx', 'qfx', 'csv', 'txt'] }],
+    filters: [{ name: 'Extrato (PDF, OFX ou CSV)', extensions: ['pdf', 'ofx', 'qfx', 'csv', 'txt'] }],
   });
   if (res.canceled || !res.filePaths[0]) return { ok: false };
   const f = res.filePaths[0];
   if (fs.statSync(f).size > 5 * 1024 * 1024) return { ok: false, error: 'Arquivo grande demais (máximo 5 MB).' };
   const buf = fs.readFileSync(f);
+  if (/\.pdf$/i.test(f) || buf.subarray(0, 4).toString('latin1') === '%PDF') return { ok: true, name: path.basename(f), bytes: new Uint8Array(buf) };
   let text = buf.toString('utf8');
   if (text.includes('�')) text = buf.toString('latin1'); // muitos bancos usam Windows-1252
   return { ok: true, name: path.basename(f), text };

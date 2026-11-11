@@ -488,6 +488,14 @@ button.profile-switch:hover { background: var(--surface-2); }
 .imp-table { overflow-y: auto; flex: 1; min-height: 160px; border: 1px solid var(--border); border-radius: 12px; }
 .imp-table .table th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .imp-table .table td { padding: 8px 10px; }
+.imp-table .imp-sec-head td { padding: 14px 12px 10px; background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: normal; }
+.imp-sec + .imp-sec .imp-sec-head td { border-top: 2px solid var(--border-strong); }
+.imp-sec-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; }
+.imp-sec-title svg { width: 16px; height: 16px; }
+.imp-sec.review .imp-sec-title svg { color: var(--amber); }
+.imp-sec.auto .imp-sec-title svg { color: var(--green); }
+.imp-sec-title .muted { color: var(--text-3); font-weight: 500; }
+.imp-sec-hint { color: var(--text-3); font-size: 12px; margin-top: 3px; max-width: 640px; }
 .muted-row td { opacity: .5; }
 .icon-btn.inline { display: inline-grid; vertical-align: middle; width: 22px; height: 22px; margin-left: 4px; }
 .icon-btn.inline svg { width: 13px; height: 13px; }

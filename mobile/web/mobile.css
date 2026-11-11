@@ -92,7 +92,19 @@ body { -webkit-tap-highlight-color: transparent; font-family: system-ui, Roboto,
 @keyframes sheet-up { from { transform: translateY(100%); } }
 .nav-item { padding-left: 20px; }
 @media (prefers-reduced-motion: reduce) { .m-tab.on .plumb, .m-tab.on i { animation: none; } }
-.imp-table { overflow-x: auto; }
+/* Importação: cada lançamento vira um cartão */
+.imp-table { overflow-x: hidden; }
+.imp-table table, .imp-table tbody { display: block; width: 100%; white-space: normal; overflow: visible; }
+.imp-table thead { display: none; }
+.imp-table tr.imp-sec-head { display: block; }
+.imp-table tr.imp-sec-head td { display: block; padding: 12px 14px; }
+.imp-table tr.imp-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.imp-table tr.imp-row td { padding: 0; border: 0; }
+.imp-table .imp-desc { overflow-wrap: anywhere; font-size: 13.5px; }
+.imp-table .imp-act, .imp-table .imp-cat { grid-column: 1 / -1; }
+.imp-table .imp-act { margin-top: 6px; }
+.imp-table .imp-row select { width: 100%; max-width: none; }
+.imp-table .imp-cat > .muted { display: none; }
 .lock-card { width: calc(100vw - 32px); padding: 24px 18px; }
 .lock-card input { font-size: 16px; }
 #toast { bottom: 140px; width: max-content; max-width: calc(100vw - 32px); text-align: center; }

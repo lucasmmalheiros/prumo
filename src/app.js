@@ -252,7 +252,7 @@ function normalize(d) {
   d.settings.bankBanks ||= BANKS.filter((b) => b[0] !== 'outro').map((b) => b[0]);
   d.pendingBank ||= [];
   d.customCats ||= {}; d.incomes ||= []; d.bills ||= []; d.cards ||= []; d.payments ||= {}; d.settled ||= {};
-  d.spending ||= {}; d.imported ||= {}; d.chat ||= []; d.goals ||= []; d.subs ||= [];
+  d.spending ||= {}; d.imported ||= {}; d.chat ||= []; d.goals ||= []; d.subs ||= []; d.learnedCats ||= {};
   d.settings.secretary = { enabled: true, tray: true, startup: false, daysBefore: 2, ...(d.settings.secretary || {}) };
   d.reserve = { balance: 0, goal: 0, history: [], ...(d.reserve || {}) };
   d.cards.forEach((c) => { c.invoices ||= {}; });
@@ -1661,12 +1661,51 @@ let imp = null;
 const IGNORE_RE = /(pagamento (de |da )?fatura|pagto fatura|pagamento recebido|transf(erencia)? entre contas|aplicacao|resgate|estorno)/;
 
 async function importDropped(file) {
-  if (!/\.(ofx|qfx|csv|txt)$/i.test(file.name)) { toast('Use um arquivo OFX ou CSV'); return; }
+  if (!/\.(ofx|qfx|csv|txt|pdf)$/i.test(file.name)) { toast('Use um arquivo PDF, OFX ou CSV'); return; }
   if (file.size > 5 * 1024 * 1024) { toast('Arquivo grande demais (máximo 5 MB).'); return; }
-  const buf = await file.arrayBuffer();
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if (isPdf(buf, file.name)) { startImport({ ok: true, name: file.name, bytes: buf }); return; }
   let text = new TextDecoder('utf-8').decode(buf);
   if (text.includes('�')) text = new TextDecoder('windows-1252').decode(buf); // muitos bancos usam Windows-1252
   startImport({ ok: true, name: file.name, text });
+}
+
+// PDF
+const isPdf = (bytes, name) => /\.pdf$/i.test(name || '') || (bytes && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46);
+let pdfReady = null;
+function loadScript(src) {
+  return new Promise((ok, fail) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = fail; document.head.appendChild(s); });
+}
+async function pdfLines(bytes) {
+  // o leitor roda na própria página, sem Worker separado
+  pdfReady ||= loadScript('vendor/pdf.worker.min.js').then(() => loadScript('vendor/pdf.min.js'));
+  await pdfReady;
+  const pdf = await window.pdfjsLib.getDocument({ data: bytes, isEvalSupported: false, disableFontFace: true, useSystemFonts: false }).promise;
+  const lines = [];
+  for (let p = 1; p <= Math.min(pdf.numPages, 40); p++) {
+    const page = await pdf.getPage(p);
+    const { items } = await page.getTextContent();
+    const rows = [];
+    for (const it of items) {
+      if (!it.str || !it.str.trim()) continue;
+      const x = it.transform[4], y = it.transform[5], h = Math.abs(it.transform[3]) || 8;
+      let row = rows.find((r) => Math.abs(r.y - y) < Math.max(2, h * 0.35));
+      if (!row) { row = { y, parts: [] }; rows.push(row); }
+      row.parts.push({ x, w: it.width || it.str.length * h * 0.5, s: it.str, h });
+    }
+    rows.sort((a, b) => b.y - a.y);
+    for (const r of rows) {
+      r.parts.sort((a, b) => a.x - b.x);
+      let text = '', end = null;
+      for (const pt of r.parts) {
+        if (end !== null) text += pt.x - end > pt.h * 0.9 ? '  ' : pt.x - end > pt.h * 0.15 ? ' ' : '';
+        text += pt.s; end = pt.x + pt.w;
+      }
+      lines.push(text);
+    }
+  }
+  await pdf.destroy();
+  return lines;
 }
 
 async function startImport(given) {
@@ -1674,13 +1713,19 @@ async function startImport(given) {
   const res = given || await api.pickStatement();
   if (!res.ok) { if (res.error) toast(res.error); return; }
   let parsed;
-  try { parsed = Statement.parse(res.text, res.name); } catch { parsed = { rows: [] }; }
+  if (res.bytes) {
+    toast('Lendo o PDF...');
+    try { parsed = Statement.parsePDFLines(await pdfLines(res.bytes)); } catch { parsed = { rows: [] }; }
+    clearTimeout(toastTimer); $('#toast').hidden = true;
+  } else {
+    try { parsed = Statement.parse(res.text, res.name); } catch { parsed = { rows: [] }; }
+  }
   if (!parsed.rows.length) {
-    formModal({ title: 'Não reconheci esse extrato', lead: 'Use o arquivo <b>OFX</b> (o mais confiável) ou <b>CSV</b> que o app ou site do banco oferece em "Exportar extrato". PDF e imagem não funcionam.', fields: [], submit: 'Entendi', onSubmit: () => {} });
+    formModal({ title: 'Não reconheci esse extrato', lead: res.bytes ? 'Não encontrei lançamentos nesse PDF. Se ele for uma foto ou digitalização, não dá para ler: baixe o extrato em PDF pelo app ou site do banco, ou use <b>OFX</b> ou <b>CSV</b>.' : 'Use o extrato em <b>PDF</b>, <b>OFX</b> ou <b>CSV</b> que o app ou site do banco oferece em "Exportar extrato".', fields: [], submit: 'Entendi', onSubmit: () => {} });
     return;
   }
   const positives = parsed.rows.filter((r) => r.amount > 0).length;
-  const invert = parsed.kind === 'CSV' && positives / parsed.rows.length > 0.7;
+  const invert = parsed.kind === 'PDF' ? parsed.card : parsed.kind === 'CSV' && positives / parsed.rows.length > 0.7;
   const lastMonth = parsed.rows.map((r) => r.date.slice(0, 7)).sort().pop();
   imp = { name: res.name, kind: parsed.kind, rows: parsed.rows, invert, owner: defaultPerson(), cardId: data.cards[0]?.id || '', cardMonth: addMonths(lastMonth, 1) };
   suggestImport();
@@ -1693,10 +1738,12 @@ function suggestImport() {
     r.amt = imp.invert ? -r.amount : r.amount;
     r.m = r.date.slice(0, 7);
     r.dup = !!data.imported[r.key];
-    r.cat = Statement.guessCategory(r.desc);
+    r.cat = Statement.guessCategory(r.desc, data.learnedCats);
     r.match = null;
     const isIgnorable = IGNORE_RE.test(Statement.norm(r.desc));
     const service = guessService(r.desc);
+    // auto: o Prumo reconheceu sozinho
+    r.auto = r.dup || isIgnorable || !!service || r.cat !== 'outros';
     if (imp.invert) { r.action = r.dup || isIgnorable ? 'ignorar' : service ? 'assinatura' : 'fatura'; continue; }
     if (r.amt < 0) {
       const v = -r.amt;
@@ -1704,7 +1751,7 @@ function suggestImport() {
         .map((b) => ({ b, sim: Statement.similar(r.desc, b.name), diff: Math.abs(b.amount - v) }))
         .filter((x) => x.sim || x.diff < 0.01)
         .sort((a, b) => (b.sim - a.sim) || a.diff - b.diff);
-      if (cands[0]) { r.match = cands[0].b; used.add(r.m + r.match.id); }
+      if (cands[0]) { r.match = cands[0].b; used.add(r.m + r.match.id); r.auto = true; }
       r.action = r.dup ? 'ignorar' : r.match ? 'pay' : isIgnorable ? 'ignorar' : service ? 'assinatura' : 'diaadia';
     } else {
       r.action = 'ignorar'; // entradas: salário etc. já estão cadastrados
@@ -1727,6 +1774,14 @@ function renderImport() {
   const cardTotal = -sum(imp.rows.filter((r) => r.action === 'fatura' || r.action === 'assinatura'), (r) => r.amt);
   const dates = imp.rows.map((r) => r.date).sort();
   const months = Array.from({ length: 4 }, (_, i) => addMonths(dates[dates.length - 1].slice(0, 7), i - 1));
+  const cols = imp.invert ? 4 : 5;
+  const row = (r, i) => `<tr class="imp-row ${r.action === 'ignorar' ? 'muted-row' : ''}"><td class="num imp-d">${r.date.slice(8)}/${r.date.slice(5, 7)}</td><td class="imp-desc">${esc(r.desc)}${r.dup ? ' <span class="tag neutral">já importado</span>' : ''}</td><td class="r amt num ${r.amt > 0 ? 'pos' : ''}">${r.amt > 0 ? '+ ' : '− '}${money(Math.abs(r.amt))}</td>
+        <td class="imp-act">${sel(`class="filter-select" data-imp="action" data-i="${i}"`, optsFor(r), r.action)}</td>
+        ${imp.invert ? '' : `<td class="imp-cat">${['diaadia', 'conta'].includes(r.action) ? sel(`class="filter-select" data-imp="cat" data-i="${i}"`, cats, r.cat) : r.action === 'assinatura' ? '<span class="muted">Assinaturas</span>' : '<span class="muted">—</span>'}</td>`}</tr>`;
+  const withIdx = imp.rows.map((r, i) => [r, i]);
+  const review = withIdx.filter(([r]) => !r.auto), auto = withIdx.filter(([r]) => r.auto);
+  const section = (list, kind, title, hint) => (list.length ? `<tbody class="imp-sec ${kind}"><tr class="imp-sec-head"><td colspan="${cols}"><div class="imp-sec-title">${title}</div><div class="imp-sec-hint">${hint}</div></td></tr>
+      ${list.map(([r, i]) => row(r, i)).join('')}</tbody>` : '');
   const still = $('#impmodal') ? ' still' : ''; // redesenho da mesma janela: sem animar de novo
   $('#modal-root').innerHTML = `<div class="modal-backdrop${still}" data-backdrop><div class="modal wide${still}" id="impmodal">
     <h3>Importar extrato</h3>
@@ -1737,16 +1792,25 @@ function renderImport() {
     </div>
     ${imp.invert ? `<div class="banner" style="margin-bottom:12px">${I.info}<div class="grow">Compras no cartão já entram no saldo pela <b>fatura</b>, então elas não viram gastos separados (contaria duas vezes). O Prumo soma as compras e lança como fatura:</div></div>
       <div class="imp-opts">${data.cards.length ? `<label class="imp-inline">Cartão ${sel('data-imp="card"', data.cards.map((c) => [c.id, c.name + cardDigits(c)]), imp.cardId)}</label><label class="imp-inline">Fatura de ${sel('data-imp="cardMonth"', months.map((m) => [m, monthLong(m)]), imp.cardMonth)}</label><b class="num">Total: ${money(cardTotal)}</b>` : '<span class="muted">Cadastre um cartão primeiro em Cartões.</span>'}</div>` : ''}
-    <div class="imp-table"><table class="table"><thead><tr><th>Data</th><th>Descrição</th><th class="r">Valor</th><th>Como registrar</th>${imp.invert ? '' : '<th>Categoria</th>'}</tr></thead><tbody>
-      ${imp.rows.map((r, i) => `<tr class="${r.action === 'ignorar' ? 'muted-row' : ''}"><td class="num">${r.date.slice(8)}/${r.date.slice(5, 7)}</td><td>${esc(r.desc)}${r.dup ? ' <span class="tag neutral">já importado</span>' : ''}</td><td class="r amt num ${r.amt > 0 ? 'pos' : ''}">${r.amt > 0 ? '+ ' : '− '}${money(Math.abs(r.amt))}</td>
-        <td>${sel(`class="filter-select" data-imp="action" data-i="${i}"`, optsFor(r), r.action)}</td>
-        ${imp.invert ? '' : `<td>${['diaadia', 'conta'].includes(r.action) ? sel(`class="filter-select" data-imp="cat" data-i="${i}"`, cats, r.cat) : r.action === 'assinatura' ? '<span class="muted">Assinaturas</span>' : '<span class="muted">—</span>'}</td>`}</tr>`).join('')}
-    </tbody></table></div>
+    <div class="imp-table"><table class="table"><thead><tr><th>Data</th><th>Descrição</th><th class="r">Valor</th><th>Como registrar</th>${imp.invert ? '' : '<th>Categoria</th>'}</tr></thead>
+      ${section(review, 'review', `${I.info}Confira estes <span class="muted">· ${review.length}</span>`, 'O Prumo não reconheceu: escolha como registrar e a categoria. Ele lembra da sua escolha nas próximas vezes.')}
+      ${section(auto, 'auto', `${I.check}O Prumo já entendeu <span class="muted">· ${auto.length}</span>`, 'Reconhecidos pelo nome do lugar, pelas contas cadastradas ou pelo que você escolheu antes. Dá para mudar se algo estiver errado.')}
+    </table></div>
     <p class="form-error" id="imperr"></p>
     <div class="modal-actions"><span class="muted" style="font-size:12.5px">${imp.invert ? `${pl(counts.fatura + counts.assinatura, 'compra', 'compras')} na fatura${counts.assinatura ? ` (${pl(counts.assinatura, 'assinatura', 'assinaturas')})` : ''} · ${pl(counts.ignorar, 'não registrada', 'não registradas')}` : `${pl(counts.pay, 'conta dada como paga', 'contas dadas como pagas')} · ${pl(counts.diaadia, 'compra', 'compras')} do dia a dia · ${pl(counts.assinatura, 'assinatura', 'assinaturas')} · ${pl(counts.conta, 'conta só deste mês', 'contas só deste mês')} · ${pl(counts.renda, 'entrada', 'entradas')} · ${pl(counts.ignorar, 'não registrado', 'não registrados')}`}</span><span class="grow"></span>
       <button type="button" class="btn" data-action="close-modal">Cancelar</button><button type="button" class="btn btn-primary" data-imp-apply>Importar</button></div>
   </div></div>`;
   $('#modal-root').hidden = false;
+}
+
+// Aprendizado
+function learnCategory(r) {
+  const key = Statement.merchantKey(r.desc);
+  if (!key || key.replace(/[^a-z]/g, '').length < 3) return;
+  const L = data.learnedCats;
+  if (r.cat && r.cat !== 'outros') L[key] = r.cat; else delete L[key];
+  const keys = Object.keys(L);
+  if (keys.length > 3000) keys.slice(0, keys.length - 3000).forEach((k) => delete L[k]);
 }
 
 function applyImport() {
@@ -1768,7 +1832,8 @@ function applyImport() {
     const day = Number(r.date.slice(8));
     if (r.action === 'pay' && r.match) setPaid(r.m, r.match.id, true);
     else if (r.action === 'assinatura') subFromImport(r, st.owner, 'conta');
-    else if (r.action === 'diaadia') (data.spending[r.m] ||= []).push({ id: uid(), date: r.date, desc: r.desc.slice(0, 80), amount: -r.amt, category: r.cat, owner: st.owner, key: r.key });
+    if (['diaadia', 'conta'].includes(r.action)) learnCategory(r);
+    if (r.action === 'diaadia') (data.spending[r.m] ||= []).push({ id: uid(), date: r.date, desc: r.desc.slice(0, 80), amount: -r.amt, category: r.cat, owner: st.owner, key: r.key });
     else if (r.action === 'conta') {
       const b = { id: uid(), name: r.desc.slice(0, 60), amount: -r.amt, day, category: r.cat, type: 'variavel', month: r.m, payer: st.owner, scope: 'pessoal', imported: true };
       data.bills.push(b); setPaid(r.m, b.id, true);
@@ -1957,7 +2022,7 @@ function runVoice(text) {
       pendingCmd = { cmd: c.cmd, month: ui.month };
       return { ok: true, stay: true, msg: `Você quer ${confirmLabel(c.cmd)}? Responda "sim" ou "não".` };
     case 'hello': return { ok: true, stay: true, msg: 'Olá! Posso lançar gastos ("gastei 30 no almoço"), marcar contas pagas, responder "como fica fevereiro?" ou receber seu extrato. É só pedir.' };
-    case 'statement': return { ok: true, stay: true, attach: 'statement', msg: 'Envie aqui o extrato do seu banco. Use o arquivo OFX ou CSV que o app ou site do banco oferece em "Exportar extrato".' };
+    case 'statement': return { ok: true, stay: true, attach: 'statement', msg: 'Envie aqui o extrato do seu banco. Pode ser o PDF, OFX ou CSV que o app ou site do banco oferece em "Exportar extrato".' };
     case 'goalmove': {
       const g = data.goals.find((x) => x.id === c.goal.id);
       if (c.kind === 'withdraw' && c.amount > g.saved) return { ok: false, msg: `A meta "${g.name}" só tem ${money(g.saved)}.` };

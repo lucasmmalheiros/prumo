@@ -38,7 +38,7 @@ Os dados ficam só no aparelho. Não há conta, servidor nem sincronização em 
 - **Minha casa**: contas divididas entre duas ou mais pessoas, com a parte justa de cada uma e quem deve devolver para quem.
 - **Reserva e metas**: acompanhamento da reserva de emergência (em meses de gastos cobertos) e metas de economia com prazo.
 - **Conversa por texto ou voz**: frases como *"gastei 30 no almoço"*, *"paguei o aluguel"* ou *"como fica fevereiro?"* viram lançamentos ou respostas com os números do app. Quando a frase é ambígua, o Prumo pergunta antes de alterar qualquer dado.
-- **Importação de extratos**: arquivos OFX e CSV dos bancos, com sugestão de categoria, reconhecimento de contas já cadastradas e de assinaturas. No Android, o extrato pode ser enviado direto de outro app pelo menu *Compartilhar*.
+- **Importação de extratos**: arquivos PDF, OFX e CSV dos bancos e faturas de cartão. O Prumo reconhece cerca de 1.500 lojas e serviços do dia a dia (Uber, iFood, mercados, farmácias, escolas...) e já marca a categoria. Os lançamentos reconhecidos ficam separados dos que precisam de conferência, e o app lembra das escolhas feitas nos que ele não conhecia. Também reconhece contas já cadastradas e assinaturas. No Android, o extrato pode ser enviado direto de outro app pelo menu *Compartilhar*.
 - **Avisos de vencimento**: resumo diário das contas que vencem nos próximos dias.
 - **Tema claro, escuro ou automático**, acompanhando o sistema.
 
@@ -65,6 +65,7 @@ Os dados ficam só no aparelho. Não há conta, servidor nem sincronização em 
 
 - **Uma interface, duas plataformas.** A mesma interface em HTML, CSS e JavaScript roda no Electron (Windows) e no Capacitor (Android). No celular, uma camada própria substitui o processo principal do Electron e mantém o mesmo formato de arquivo, para que um aparelho abra o que o outro exportou.
 - **Entendimento de frases sem servidor.** A conversa usa um classificador próprio, treinado com o script em `tools/`. Ele usa n-gramas de palavras e de letras com *feature hashing*, tem pesos quantizados em 8 bits e roda inteiro no aparelho. Valores e datas são extraídos por regras, e as respostas sempre usam os cálculos do app.
+- **Extratos em PDF sem servidor.** O texto do PDF é lido no próprio aparelho com o [pdf.js](https://mozilla.github.io/pdf.js/) e montado em linhas. Regras próprias encontram data, descrição e valor, e uma lista de estabelecimentos (`src/merchants.js`) define a categoria. Os arquivos do pdf.js ficam em `src/vendor/` e não fazem parte do repositório.
 - **Voz offline.** O reconhecimento de fala usa o [Vosk](https://alphacephei.com/vosk/) com um modelo em português que roda localmente.
 - **Sem framework de interface.** A interface é JavaScript puro, com renderização por templates e CSS próprio, para manter o app leve e sem dependências em tempo de execução.
 
@@ -76,6 +77,7 @@ Os dados ficam só no aparelho. Não há conta, servidor nem sincronização em 
 | Android | Capacitor 7, plugins nativos em Java |
 | Interface | HTML, CSS e JavaScript, sem framework |
 | Voz | Vosk (WebAssembly) |
+| Extratos em PDF | pdf.js |
 | Criptografia | Web Crypto (AES-256-GCM), scrypt |
 
 ## Estrutura do projeto
@@ -87,7 +89,8 @@ prumo/
 ├── secretary.js         # avisos de vencimento no Windows
 ├── src/                 # interface compartilhada entre Windows e Android
 │   ├── app.js           # telas, cálculos e ações
-│   ├── statement.js     # leitura de extratos OFX e CSV
+│   ├── statement.js     # leitura de extratos PDF, OFX e CSV
+│   ├── merchants.js     # lojas e serviços conhecidos, por categoria
 │   ├── intent.js        # classificador de frases
 │   ├── voice*.js        # conversa e reconhecimento de voz
 │   └── styles.css
