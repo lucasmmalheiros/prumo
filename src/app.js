@@ -149,9 +149,9 @@ function subMark(s, size = 40) {
   return `<span class="sub-mark ${txt.length > 2 ? 'long' : ''}" style="background:${known ? sv[2] : s.color || SUB_COLORS[0]};color:${known ? sv[3] : '#fff'};width:${size}px;height:${size}px;font-size:${Math.round(size * (txt.length > 2 ? 0.3 : 0.38))}px" aria-hidden="true">${esc(txt)}</span>`;
 }
 const subMonthly = (s) => (s.cycle === 'anual' ? s.amount / 12 : s.amount);
-const subActive = (s) => !s.paused;
+const subActive = (s) => !s.paused && !(s.end && s.end < ymNow());
 function subChargesIn(s, m) {
-  if (s.paused || (s.start && m < s.start)) return false;
+  if (s.paused || (s.start && m < s.start) || (s.end && m > s.end)) return false;
   return s.cycle !== 'anual' || ymParts(m)[1] === Number(s.month);
 }
 const subOnCard = (s) => s.pay !== 'conta' && data.cards.some((c) => c.id === s.pay);
@@ -252,7 +252,7 @@ function normalize(d) {
   d.settings.bankBanks ||= BANKS.filter((b) => b[0] !== 'outro').map((b) => b[0]);
   d.pendingBank ||= [];
   d.customCats ||= {}; d.incomes ||= []; d.bills ||= []; d.cards ||= []; d.payments ||= {}; d.settled ||= {};
-  d.spending ||= {}; d.imported ||= {}; d.chat ||= []; d.goals ||= []; d.subs ||= []; d.learnedCats ||= {};
+  d.spending ||= {}; d.imported ||= {}; d.chat ||= []; d.goals ||= []; d.subs ||= []; d.learnedCats ||= {}; d.askedMissing ||= {};
   d.settings.secretary = { enabled: true, tray: true, startup: false, daysBefore: 2, ...(d.settings.secretary || {}) };
   d.reserve = { balance: 0, goal: 0, history: [], ...(d.reserve || {}) };
   d.cards.forEach((c) => { c.invoices ||= {}; });
@@ -278,8 +278,10 @@ const incomesOf = (m, owner) => data.incomes.filter((i) => (!i.month || i.month 
 const isPaid = (m, id) => !!data.payments[m]?.[id];
 const spendOf = (m, owner) => (data.spending[m] || []).filter((x) => !owner || owner === 'casa' || x.owner === owner);
 
+// Conta vale no mês: só deste mês, ou fixa entre o início e o fim
+const billActive = (b, m) => (b.month ? b.month === m : (!b.start || m >= b.start) && (!b.end || m <= b.end));
 function billsOf(m) {
-  const list = data.bills.filter((b) => !b.month || b.month === m).map((b) => ({ ...b, kind: 'bill' }));
+  const list = data.bills.filter((b) => billActive(b, m)).map((b) => ({ ...b, kind: 'bill' }));
   for (const c of data.cards) {
     const v = invoiceOf(c, m);
     if (v > 0) list.push({ id: 'card:' + c.id, cardId: c.id, name: 'Fatura ' + c.name + cardDigits(c), amount: v, day: c.dueDay, category: 'cartao', type: 'cartao', kind: 'card', payer: c.owner, scope: c.scope });
@@ -566,11 +568,14 @@ function cardSaldo(s) {
   </section>`;
 }
 
+// Assinaturas que já vêm dentro da fatura deste cartão
+const subsInCard = (cardId, m) => sum(data.subs.filter((s) => s.pay === cardId && subChargesIn(s, m)), (s) => s.amount);
 function billRow(b, m, compact = false) {
   const info = dueInfo(b, m);
+  const inSubs = b.kind === 'card' && !compact ? subsInCard(b.cardId, m) : 0;
   return `<div class="bill-row ${b.paid ? 'paid' : ''}">
     <button class="check ${b.paid ? 'on' : ''}" data-action="toggle-paid" data-id="${esc(b.id)}" title="${b.paid ? 'Desmarcar' : 'Marcar como paga'}">${I.check}</button>
-    <div class="name" ${b.kind === 'bill' ? `data-action="edit-bill" data-id="${esc(b.id)}" style="cursor:pointer"` : b.kind === 'sub' ? `data-action="edit-sub" data-id="${esc(b.subId)}" style="cursor:pointer"` : ''}>${esc(b.name)}${compact ? '' : `<div class="sub">dia ${pad2(b.day)} · ${catInfo(b.category).label}${isMulti() ? ` · ${b.scope === 'casa' ? 'casa' : 'pessoal'}${currentView() === 'casa' ? ` · ${pDot(personOf(b.payer))} ${esc(personOf(b.payer).name)}` : ''}` : ''}</div>`}</div>
+    <div class="name" ${b.kind === 'bill' ? `data-action="edit-bill" data-id="${esc(b.id)}" style="cursor:pointer"` : b.kind === 'sub' ? `data-action="edit-sub" data-id="${esc(b.subId)}" style="cursor:pointer"` : ''}>${esc(b.name)}${compact ? '' : `<div class="sub">dia ${pad2(b.day)} · ${catInfo(b.category).label}${isMulti() ? ` · ${b.scope === 'casa' ? 'casa' : 'pessoal'}${currentView() === 'casa' ? ` · ${pDot(personOf(b.payer))} ${esc(personOf(b.payer).name)}` : ''}` : ''}${inSubs ? ` · inclui ${money(inSubs)} em assinaturas` : ''}</div>`}</div>
     ${info && !b.paid ? `<span class="tag ${info.cls}">${info.text}</span>` : ''}
     <div class="amt num">${money(b.amount)}</div>
   </div>`;
@@ -842,17 +847,18 @@ const SERVICE_RE = [
   ['crunchyroll', /crunchyroll/], ['paramount', /paramount/], ['duolingo', /duolingo/], ['wellhub', /wellhub|gympass/],
   ['ifood', /ifood ?clube|clube ?ifood/], ['meli', /meli ?\+|meli ?plus/], ['uberone', /uber ?one/],
 ];
+const SUB_EXTRA = /\b(adobe|smart ?fit|bluefit|selfit|academia|apple ?(com|one|music|tv)|itunes|amazon music|kindle unlimited|audible|tidal|telecine|mubi|dropbox|notion|github|claude ai|anthropic|midjourney|ea play|nintendo online|linkedin premium|tinder|bumble|headspace|calm|babbel|strava)\b/;
 const guessService = (desc) => (SERVICE_RE.find(([, re]) => re.test(Statement.norm(desc))) || [])[0] || null;
 function subFromImport(r, owner, pay) {
   const service = guessService(r.desc) || 'outro';
-  const name = service === 'outro' ? r.desc.replace(/\s+/g, ' ').trim().slice(0, 40) : SERVICES.find((s) => s[0] === service)[1];
+  const name = service === 'outro' ? cleanName(r.desc) : SERVICES.find((s) => s[0] === service)[1];
   let s = data.subs.find((x) => (service !== 'outro' ? x.service === service : x.name.toLowerCase() === name.toLowerCase()));
   if (!s) {
     s = { id: uid(), service, name, amount: Math.abs(r.amt), cycle: 'mensal', day: Number(r.date.slice(8)), pay, start: r.m, payer: owner, scope: 'pessoal' };
     if (service === 'outro') s.color = SUB_COLORS[data.subs.length % SUB_COLORS.length];
     data.subs.push(s);
   }
-  if (s.pay === 'conta' && subChargesIn(s, r.m)) setPaid(r.m, 'sub:' + s.id, true);
+  if (s.pay === 'conta' && subChargesIn(s, r.m)) { setPaid(r.m, 'sub:' + s.id, true); s.seen = true; }
   return s;
 }
 
@@ -1137,7 +1143,7 @@ function pageCartoes() {
 
 function pageCasa() {
   const s = summary(ui.month);
-  const items = data.bills.filter((b) => b.category === 'moradia' && (!b.month || b.month === ui.month));
+  const items = data.bills.filter((b) => b.category === 'moradia' && billActive(b, ui.month));
   return `<div class="dash-pair">${cardMoradia(s, { noList: true })}
     <section class="card">${pageHead('Moradia', `Tudo com a categoria Moradia em ${monthLong(ui.month).toLowerCase()}.`, `<button class="btn" data-action="housing-ref">Referência</button><button class="btn btn-primary" data-action="add" data-kind="bill" data-cat="moradia">${I.plus}Nova</button>`)}
       <table class="table"><thead><tr><th></th><th>Conta</th><th>Dia</th><th class="r">Valor</th><th></th></tr></thead><tbody>
@@ -1732,8 +1738,30 @@ async function startImport(given) {
   renderImport();
 }
 
+// Mesmo lugar, valor parecido, em outro mês (no extrato ou já lançado antes)
+const closeAmt = (a, b) => Math.abs(a - b) <= Math.max(2, Math.max(a, b) * 0.1);
+const BOLETO_RE = /\b(boleto|debito automatico|deb aut|convenio)\b/;
+const TRANSF_RE = /\b(pix|transferencia|ted|doc)\b/;
+// Pago como conta (boleto, débito automático, ou Pix alto que não é compra do dia a dia)
+const billLike = (r) => { const t = Statement.norm(r.desc); return BOLETO_RE.test(t) || (TRANSF_RE.test(t) && Math.abs(r.amount) >= 100 && !['transporte', 'alimentacao', 'compras', 'lazer', 'cuidados'].includes(r.cat)); };
+function historyIndex(rows) {
+  const idx = new Map();
+  const add = (desc, amt, m) => { const k = Statement.merchantKey(desc || ''); if (k.length >= 3) { if (!idx.has(k)) idx.set(k, []); idx.get(k).push([m, Math.abs(amt)]); } };
+  rows.forEach((x) => add(x.desc, x.amount, x.date.slice(0, 7)));
+  for (const m in data.spending) data.spending[m].forEach((x) => add(x.desc, x.amount, m));
+  data.bills.forEach((b) => { if (b.imported && b.month) add(b.name, b.amount, b.month); });
+  return idx;
+}
+function repeatsMonthly(r, idx) {
+  const k = Statement.merchantKey(r.desc), v = Math.abs(r.amount);
+  if (k.length < 3 || Statement.isPerson(r.desc)) return false;
+  return (idx.get(k) || []).some(([m, a]) => m !== r.m && closeAmt(a, v));
+}
+// Nome curto para a conta fixa
+const cleanName = (desc) => { const k = Statement.merchantKey(desc); return k ? k.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 40) : desc.slice(0, 40); };
+
 function suggestImport() {
-  const used = new Set();
+  const used = new Set(), hist = historyIndex(imp.rows);
   for (const r of imp.rows) {
     r.amt = imp.invert ? -r.amount : r.amount;
     r.m = r.date.slice(0, 7);
@@ -1741,10 +1769,14 @@ function suggestImport() {
     r.cat = Statement.guessCategory(r.desc, data.learnedCats);
     r.match = null;
     const isIgnorable = IGNORE_RE.test(Statement.norm(r.desc));
-    const service = guessService(r.desc);
+    const service = guessService(r.desc) || (r.cat === 'assinaturas' || SUB_EXTRA.test(Statement.norm(r.desc)) ? 'outro' : null);
+    const repeats = !r.dup && !isIgnorable && r.amt < 0 && repeatsMonthly(r, hist);
+    const boleto = billLike(r);
+    // repetição de compra só vira assinatura se não for de outra categoria (Uber, mercado...)
+    const subRepeat = repeats && !boleto && !TRANSF_RE.test(Statement.norm(r.desc)) && ['outros', 'assinaturas'].includes(r.cat);
     // auto: o Prumo reconheceu sozinho
-    r.auto = r.dup || isIgnorable || !!service || r.cat !== 'outros';
-    if (imp.invert) { r.action = r.dup || isIgnorable ? 'ignorar' : service ? 'assinatura' : 'fatura'; continue; }
+    r.auto = r.dup || isIgnorable || !!service || (repeats && boleto) || r.cat !== 'outros';
+    if (imp.invert) { r.action = r.dup || isIgnorable ? 'ignorar' : service || subRepeat ? 'assinatura' : 'fatura'; continue; }
     if (r.amt < 0) {
       const v = -r.amt;
       const cands = billsOf(r.m).filter((b) => !b.paid && !used.has(r.m + b.id) && Math.abs(b.amount - v) <= Math.max(1, b.amount * 0.02))
@@ -1752,36 +1784,62 @@ function suggestImport() {
         .filter((x) => x.sim || x.diff < 0.01)
         .sort((a, b) => (b.sim - a.sim) || a.diff - b.diff);
       if (cands[0]) { r.match = cands[0].b; used.add(r.m + r.match.id); r.auto = true; }
-      r.action = r.dup ? 'ignorar' : r.match ? 'pay' : isIgnorable ? 'ignorar' : service ? 'assinatura' : 'diaadia';
+      r.action = r.dup ? 'ignorar' : r.match ? 'pay' : isIgnorable ? 'ignorar' : service ? 'assinatura' : repeats && boleto ? 'fixa' : subRepeat ? 'assinatura' : 'diaadia';
     } else {
       r.action = 'ignorar'; // entradas: salário etc. já estão cadastrados
     }
   }
+  imp.missing = imp.invert ? [] : missingBills(imp.rows);
+}
+
+// Contas fixas que venceram dentro do período do extrato e não apareceram nele
+function missingBills(rows) {
+  const dates = rows.map((r) => r.date).sort();
+  const from = dates[0], to = dates[dates.length - 1], out = [];
+  const asked = data.askedMissing || {};
+  for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = addMonths(m, 1)) {
+    for (const b of billsOf(m)) {
+      if (b.paid || b.kind === 'card' || (b.kind === 'bill' && b.month) || asked[m + '|' + b.id]) continue;
+      const src = b.kind === 'sub' ? data.subs.find((s) => s.id === b.subId) : data.bills.find((x) => x.id === b.id);
+      if (!src || !src.seen) continue; // só o que costuma vir no extrato
+      const due = `${m}-${pad2(b.day)}`;
+      if (due < from || due > to) continue;
+      out.push({ m, id: b.id, kind: b.kind, subId: b.subId, name: b.name, amount: b.amount, due, answer: '' });
+    }
+  }
+  return out;
 }
 
 function renderImport() {
   const multi = isMulti();
   const optsFor = (r) => {
     if (imp.invert) return r.amt < 0 ? [['fatura', 'Somar na fatura'], ['assinatura', 'Assinatura (soma na fatura)'], ['ignorar', 'Não registrar']] : [['fatura', 'Somar na fatura'], ['ignorar', 'Não registrar']];
-    if (r.amt < 0) return [...(r.match ? [['pay', `É a conta "${r.match.name}" (dar como paga)`]] : []), ['diaadia', 'Compra do dia a dia'], ['assinatura', 'Assinatura (repete todo mês)'], ['conta', 'Conta paga só neste mês'], ['ignorar', 'Não registrar']];
+    if (r.amt < 0) return [...(r.match ? [['pay', `É a conta "${r.match.name}" (dar como paga)`]] : []), ['diaadia', 'Compra do dia a dia'], ['fixa', 'Conta fixa (repete todo mês)'], ['assinatura', 'Assinatura (repete todo mês)'], ['conta', 'Conta paga só neste mês'], ['ignorar', 'Não registrar']];
     return [['renda', 'Dinheiro que entrou (renda extra)'], ['ignorar', 'Não registrar']];
   };
   const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const sel = (attrs, opts, v) => `<select ${attrs}>${opts.map(([k, l]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   const cats = catOptions();
-  const counts = { pay: 0, diaadia: 0, conta: 0, renda: 0, fatura: 0, assinatura: 0, ignorar: 0 };
+  const counts = { pay: 0, diaadia: 0, conta: 0, fixa: 0, renda: 0, fatura: 0, assinatura: 0, ignorar: 0 };
   imp.rows.forEach((r) => { counts[r.action]++; });
+  counts.fixa = new Set(imp.rows.filter((r) => r.action === 'fixa').map((r) => Statement.merchantKey(r.desc))).size; // uma por lugar
   const cardTotal = -sum(imp.rows.filter((r) => r.action === 'fatura' || r.action === 'assinatura'), (r) => r.amt);
   const dates = imp.rows.map((r) => r.date).sort();
   const months = Array.from({ length: 4 }, (_, i) => addMonths(dates[dates.length - 1].slice(0, 7), i - 1));
   const cols = imp.invert ? 4 : 5;
   const row = (r, i) => `<tr class="imp-row ${r.action === 'ignorar' ? 'muted-row' : ''}"><td class="num imp-d">${r.date.slice(8)}/${r.date.slice(5, 7)}</td><td class="imp-desc">${esc(r.desc)}${r.dup ? ' <span class="tag neutral">já importado</span>' : ''}</td><td class="r amt num ${r.amt > 0 ? 'pos' : ''}">${r.amt > 0 ? '+ ' : '− '}${money(Math.abs(r.amt))}</td>
         <td class="imp-act">${sel(`class="filter-select" data-imp="action" data-i="${i}"`, optsFor(r), r.action)}</td>
-        ${imp.invert ? '' : `<td class="imp-cat">${['diaadia', 'conta'].includes(r.action) ? sel(`class="filter-select" data-imp="cat" data-i="${i}"`, cats, r.cat) : r.action === 'assinatura' ? '<span class="muted">Assinaturas</span>' : '<span class="muted">—</span>'}</td>`}</tr>`;
+        ${imp.invert ? '' : `<td class="imp-cat">${['diaadia', 'conta', 'fixa'].includes(r.action) ? sel(`class="filter-select" data-imp="cat" data-i="${i}"`, cats, r.cat) : r.action === 'assinatura' ? '<span class="muted">Assinaturas</span>' : '<span class="muted">—</span>'}</td>`}</tr>`;
   const withIdx = imp.rows.map((r, i) => [r, i]);
   const review = withIdx.filter(([r]) => !r.auto), auto = withIdx.filter(([r]) => r.auto);
   const section = (list, kind, title, hint) => (list.length ? `<tbody class="imp-sec ${kind}"><tr class="imp-sec-head"><td colspan="${cols}"><div class="imp-sec-title">${title}</div><div class="imp-sec-hint">${hint}</div></td></tr>
       ${list.map(([r, i]) => row(r, i)).join('')}</tbody>` : '');
+  // Contas que não vieram no extrato (some se a pessoa ligar um lançamento a ela)
+  const missing = (imp.missing || []).map((x, i) => [x, i]).filter(([x]) => !imp.rows.some((r) => r.action === 'pay' && r.match && r.match.id === x.id && r.m === x.m));
+  const MISS_OPTS = [['', 'Escolha o que aconteceu'], ['paguei', 'Já paguei de outro jeito'], ['vou', 'Ainda vou pagar'], ['acabou', 'Acabou, não vem mais']];
+  const missRow = ([x, i]) => `<tr class="imp-row"><td class="num imp-d">${x.due.slice(8)}/${x.due.slice(5, 7)}</td><td class="imp-desc"><b>${esc(x.name)}</b> não apareceu no extrato de ${monthLong(x.m).toLowerCase()}. O que aconteceu?</td><td class="r amt num">− ${money(x.amount)}</td>
+        <td class="imp-act" ${imp.invert ? '' : 'colspan="2"'}>${sel(`class="filter-select" data-imp="miss" data-i="${i}"`, x.kind === 'sub' ? MISS_OPTS.map(([k, l]) => [k, k === 'acabou' ? 'Cancelei a assinatura' : l]) : MISS_OPTS, x.answer)}</td></tr>`;
+  const missSection = missing.length ? `<tbody class="imp-sec miss"><tr class="imp-sec-head"><td colspan="${cols}"><div class="imp-sec-title">${I.info}Não apareceram no extrato <span class="muted">· ${missing.length}</span></div><div class="imp-sec-hint">Venceram nessas datas, mas não achei o pagamento. Se não escolher nada, continuam como estão.</div></td></tr>${missing.map(missRow).join('')}</tbody>` : '';
   const still = $('#impmodal') ? ' still' : ''; // redesenho da mesma janela: sem animar de novo
   $('#modal-root').innerHTML = `<div class="modal-backdrop${still}" data-backdrop><div class="modal wide${still}" id="impmodal">
     <h3>Importar extrato</h3>
@@ -1795,9 +1853,10 @@ function renderImport() {
     <div class="imp-table"><table class="table"><thead><tr><th>Data</th><th>Descrição</th><th class="r">Valor</th><th>Como registrar</th>${imp.invert ? '' : '<th>Categoria</th>'}</tr></thead>
       ${section(review, 'review', `${I.info}Confira estes <span class="muted">· ${review.length}</span>`, 'O Prumo não reconheceu: escolha como registrar e a categoria. Ele lembra da sua escolha nas próximas vezes.')}
       ${section(auto, 'auto', `${I.check}O Prumo já entendeu <span class="muted">· ${auto.length}</span>`, 'Reconhecidos pelo nome do lugar, pelas contas cadastradas ou pelo que você escolheu antes. Dá para mudar se algo estiver errado.')}
+      ${missSection}
     </table></div>
     <p class="form-error" id="imperr"></p>
-    <div class="modal-actions"><span class="muted" style="font-size:12.5px">${imp.invert ? `${pl(counts.fatura + counts.assinatura, 'compra', 'compras')} na fatura${counts.assinatura ? ` (${pl(counts.assinatura, 'assinatura', 'assinaturas')})` : ''} · ${pl(counts.ignorar, 'não registrada', 'não registradas')}` : `${pl(counts.pay, 'conta dada como paga', 'contas dadas como pagas')} · ${pl(counts.diaadia, 'compra', 'compras')} do dia a dia · ${pl(counts.assinatura, 'assinatura', 'assinaturas')} · ${pl(counts.conta, 'conta só deste mês', 'contas só deste mês')} · ${pl(counts.renda, 'entrada', 'entradas')} · ${pl(counts.ignorar, 'não registrado', 'não registrados')}`}</span><span class="grow"></span>
+    <div class="modal-actions"><span class="muted" style="font-size:12.5px">${imp.invert ? `${pl(counts.fatura + counts.assinatura, 'compra', 'compras')} na fatura${counts.assinatura ? ` (${pl(counts.assinatura, 'assinatura', 'assinaturas')})` : ''} · ${pl(counts.ignorar, 'não registrada', 'não registradas')}` : `${pl(counts.pay, 'conta dada como paga', 'contas dadas como pagas')} · ${pl(counts.diaadia, 'compra', 'compras')} do dia a dia · ${counts.fixa ? `${pl(counts.fixa, 'conta fixa', 'contas fixas')} · ` : ''}${pl(counts.assinatura, 'assinatura', 'assinaturas')} · ${pl(counts.conta, 'conta só deste mês', 'contas só deste mês')} · ${pl(counts.renda, 'entrada', 'entradas')} · ${pl(counts.ignorar, 'não registrado', 'não registrados')}`}</span><span class="grow"></span>
       <button type="button" class="btn" data-action="close-modal">Cancelar</button><button type="button" class="btn btn-primary" data-imp-apply>Importar</button></div>
   </div></div>`;
   $('#modal-root').hidden = false;
@@ -1805,10 +1864,11 @@ function renderImport() {
 
 // Aprendizado
 function learnCategory(r) {
-  const key = Statement.merchantKey(r.desc);
-  if (!key || key.replace(/[^a-z]/g, '').length < 3) return;
   const L = data.learnedCats;
-  if (r.cat && r.cat !== 'outros') L[key] = r.cat; else delete L[key];
+  for (const key of Statement.learnKeys(r.desc)) {
+    if (!key.startsWith('cnpj:') && key.replace(/[^a-z]/g, '').length < 3) continue;
+    if (r.cat && r.cat !== 'outros') { delete L[key]; L[key] = r.cat; } else delete L[key]; // mais recente por último
+  }
   const keys = Object.keys(L);
   if (keys.length > 3000) keys.slice(0, keys.length - 3000).forEach((k) => delete L[k]);
 }
@@ -1827,22 +1887,46 @@ function applyImport() {
     toast(`Fatura de ${monthName(st.cardMonth).toLowerCase()} do ${card.name}: ${money(total)}${subs.length ? ` · ${new Set(subs).size} ${new Set(subs).size === 1 ? 'assinatura' : 'assinaturas'}` : ''}`);
     return;
   }
-  const c = { pay: 0, diaadia: 0, conta: 0, renda: 0, assinatura: 0 };
-  for (const r of ok) {
+  const c = { pay: 0, diaadia: 0, conta: 0, fixa: 0, renda: 0, assinatura: 0 };
+  const fixas = new Map(); // uma conta fixa por lugar, mesmo vindo em vários meses
+  for (const r of [...ok].sort((a, b) => a.date.localeCompare(b.date))) {
     const day = Number(r.date.slice(8));
-    if (r.action === 'pay' && r.match) setPaid(r.m, r.match.id, true);
+    if (r.action === 'pay' && r.match) {
+      setPaid(r.m, r.match.id, true);
+      const o = r.match.kind === 'sub' ? data.subs.find((s) => s.id === r.match.subId) : data.bills.find((b) => b.id === r.match.id);
+      if (o && !o.month) o.seen = true; // já veio no extrato: dá para perguntar quando faltar
+    }
     else if (r.action === 'assinatura') subFromImport(r, st.owner, 'conta');
-    if (['diaadia', 'conta'].includes(r.action)) learnCategory(r);
+    else if (r.action === 'fixa') {
+      const k = Statement.merchantKey(r.desc) || r.desc;
+      let b = fixas.get(k);
+      if (!b) {
+        b = { id: uid(), name: cleanName(r.desc), amount: -r.amt, day, category: r.cat, type: 'fixa', start: r.m, payer: st.owner, scope: 'pessoal', imported: true, seen: true };
+        data.bills.push(b); fixas.set(k, b); c.fixa++;
+      } else b.amount = -r.amt; // valor mais recente
+      setPaid(r.m, b.id, true);
+    }
+    if (['diaadia', 'conta', 'fixa'].includes(r.action)) learnCategory(r);
     if (r.action === 'diaadia') (data.spending[r.m] ||= []).push({ id: uid(), date: r.date, desc: r.desc.slice(0, 80), amount: -r.amt, category: r.cat, owner: st.owner, key: r.key });
     else if (r.action === 'conta') {
       const b = { id: uid(), name: r.desc.slice(0, 60), amount: -r.amt, day, category: r.cat, type: 'variavel', month: r.m, payer: st.owner, scope: 'pessoal', imported: true };
       data.bills.push(b); setPaid(r.m, b.id, true);
     } else if (r.action === 'renda') data.incomes.push({ id: uid(), name: r.desc.slice(0, 60), amount: r.amt, day, month: r.m, owner: st.owner });
-    c[r.action]++;
+    if (r.action !== 'fixa') c[r.action]++;
     data.imported[r.key] = true;
   }
+  // Respostas sobre contas que não vieram no extrato
+  for (const x of st.missing || []) {
+    if (!x.answer || st.rows.some((r) => r.action === 'pay' && r.match && r.match.id === x.id && r.m === x.m)) continue;
+    data.askedMissing[x.m + '|' + x.id] = x.answer;
+    if (x.answer === 'paguei') setPaid(x.m, x.id, true);
+    else if (x.answer === 'acabou') {
+      const obj = x.kind === 'sub' ? data.subs.find((s) => s.id === x.subId) : data.bills.find((b) => b.id === x.id);
+      if (obj) obj.end = addMonths(x.m, -1); // vale até o mês anterior; histórico fica
+    }
+  }
   closeModal(); imp = null; commit();
-  const parts = [[c.pay, 'conta paga', 'contas pagas'], [c.diaadia, 'compra', 'compras'], [c.assinatura, 'assinatura', 'assinaturas'], [c.conta, 'conta do mês', 'contas do mês'], [c.renda, 'entrada', 'entradas']].filter(([n]) => n).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+  const parts = [[c.pay, 'conta paga', 'contas pagas'], [c.fixa, 'conta fixa nova', 'contas fixas novas'], [c.diaadia, 'compra', 'compras'], [c.assinatura, 'assinatura', 'assinaturas'], [c.conta, 'conta do mês', 'contas do mês'], [c.renda, 'entrada', 'entradas']].filter(([n]) => n).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
   toast(parts.length ? `Importado: ${parts.join(', ')}` : 'Nada foi registrado');
 }
 
@@ -2102,6 +2186,7 @@ document.addEventListener('change', (e) => {
   else if (k === 'cardMonth') imp.cardMonth = el.value;
   else if (k === 'action') imp.rows[el.dataset.i].action = el.value;
   else if (k === 'cat') imp.rows[el.dataset.i].cat = el.value;
+  else if (k === 'miss') imp.missing[el.dataset.i].answer = el.value;
   const scroll = $('.imp-table')?.scrollTop || 0;
   renderImport();
   $('.imp-table').scrollTop = scroll;

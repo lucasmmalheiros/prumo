@@ -494,6 +494,8 @@ button.profile-switch:hover { background: var(--surface-2); }
 .imp-sec-title svg { width: 16px; height: 16px; }
 .imp-sec.review .imp-sec-title svg { color: var(--amber); }
 .imp-sec.auto .imp-sec-title svg { color: var(--green); }
+.imp-sec.miss .imp-sec-title svg { color: var(--blue); }
+.imp-sec.miss .imp-desc b { font-weight: 600; }
 .imp-sec-title .muted { color: var(--text-3); font-weight: 500; }
 .imp-sec-hint { color: var(--text-3); font-size: 12px; margin-top: 3px; max-width: 640px; }
 .muted-row td { opacity: .5; }

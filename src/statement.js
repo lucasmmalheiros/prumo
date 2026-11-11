@@ -122,22 +122,64 @@
     ['cuidados', /(barbear|salao|cabelei|manicure|estetica|boticario|natura|sephora|perfum|cosmetic)/],
     ['lazer', /(cinema|ingresso|sympla|show|bar |cervej|steam|playstation|xbox|nintendo|viagem|hotel|airbnb|booking|decolar)/],
     ['educacao', /(escola|faculdade|curso|udemy|alura|livraria|livro|mensalidade)/],
-  ];
+  ].map(([c, re]) => [c, new RegExp('\\b(?:' + re.source.slice(1, -1).replace(/\|metro\|/, '|metro\\b|') + ')')]); // início de palavra
   const Merchants = typeof module !== 'undefined' && module.exports ? require('./merchants.js') : root.PrumoMerchants;
 
   // Nome do estabelecimento
-  const BOILER = /^(compra (no|com|de) (debito|credito|cartao)( via [a-z]+)?|compra|transferencia (enviada|recebida)( pelo pix)?|transf (enviada|recebida)|pix (enviado|recebido)|pagamento (de boleto )?(efetuado|realizado)?|pagto|pag|pg|debito automatico|deb aut|debito|credito|ted|doc|envio|recebimento)\b[\s\-:*]*/;
+  const BOILER = /^(compra (no|com|de) (debito|credito|cartao)( via [a-z]+)?|compra|transferencia (enviada|recebida)( pelo pix)?|transf (enviada|recebida)|pix (enviado|recebido)|pix|pagamento (de boleto )?(efetuado|realizado)?|pagto|pag|pg|debito automatico|deb aut|debito|credito|ted|doc|envio|recebimento)\b[\s\-:*]*/;
   function merchantKey(desc) {
-    let t = norm(desc).replace(/[•*]/g, ' ');
+    let t = norm(desc).replace(/[•*"]/g, ' ');
     for (let i = 0; i < 3; i++) t = t.replace(BOILER, '').replace(/^(para|de|em|no|na)\s+/, '');
-    t = t.split(/\s+-\s+/)[0].replace(/\b(ltda|eireli|me|epp|s ?a|cia|comercio|servicos|com)\b/g, ' ').replace(/[^a-z& ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    t = t.split(/\s+-\s+/)[0].replace(/\b(instituicao de pagamentos?|ltda|eireli|me|epp|ip|s ?\.? ?a|cia|comercio|servicos|com|cnpj)\b/g, ' ').replace(/[^a-z& ]+/g, ' ').replace(/\s+/g, ' ').trim();
     return t.slice(0, 32);
   }
 
-  // learned: { nome do estabelecimento: categoria } aprendido com o que a pessoa escolheu antes
-  function guessCategory(desc, learned) {
+  // Palavras que não identificam ninguém
+  const GENERIC = new Set('brasil brasileira pagamento pagamentos instituicao instituicoes banco bank pix transferencia compra debito credito boleto efetuado enviada recebida ltda tecnologia tecnologias servicos servico comercio comercial grupo holding the and de da do das dos em com via para por cia epp eireli loja lojas digital online brasil'.split(' '));
+  const words = (key) => String(key || '').split(' ').filter((w) => w.length >= 3 && !GENERIC.has(w));
+  // CNPJ: raiz de 8 dígitos (igual em todas as filiais)
+  function cnpjRoot(desc) {
+    const m = String(desc || '').match(/\b(\d{2})\.?(\d{3})\.?(\d{3})\s*-?\s*\/\s*(\d{4})/);
+    return m ? m[1] + m[2] + m[3] : '';
+  }
+  // Pix ou transferência para pessoa: CPF mascarado e sem CNPJ
+  const isPerson = (desc) => !cnpjRoot(desc) && /[•*x"]{2,3}\s?\.?\s?\d{3}\.\d{3}\s?-\s?[•*x"]{1,2}/i.test(String(desc || ''));
+  // Chaves para guardar o que a pessoa escolheu
+  function learnKeys(desc) {
+    const out = [], k = merchantKey(desc), c = cnpjRoot(desc);
+    if (k) out.push(k);
+    if (c) out.push('cnpj:' + c);
+    return out;
+  }
+
+  function learnedFor(desc, learned) {
+    if (!learned) return null;
+    const c = cnpjRoot(desc);
+    if (c && learned['cnpj:' + c]) return learned['cnpj:' + c];
     const key = merchantKey(desc);
-    if (learned && key && learned[key]) return learned[key];
+    if (key && learned[key]) return learned[key];
+    if (isPerson(desc)) return null; // pessoa: só pelo nome completo
+    const mine = words(key);
+    if (!mine.length) return null;
+    // primeira palavra só vale se for nome próprio (não "mercado", "posto"...)
+    const lead = mine[0].length >= 4 && !(Merchants && Merchants.find(mine[0])) ? mine[0] : null;
+    let best = null, score = 0;
+    for (const k in learned) {
+      if (k.startsWith('cnpj:')) continue;
+      const theirs = words(k);
+      if (!theirs.length) continue;
+      const common = mine.filter((w) => theirs.includes(w)).length;
+      const s = lead && lead === theirs[0] ? 1 + common : common / Math.max(mine.length, theirs.length) > 0.5 ? common : 0;
+      if (s > score) { score = s; best = learned[k]; }
+    }
+    return best;
+  }
+
+  // learned: { nome ou cnpj: categoria } aprendido com o que a pessoa escolheu antes
+  function guessCategory(desc, learned) {
+    const mine = learnedFor(desc, learned);
+    if (mine) return mine;
+    if (isPerson(desc)) return 'outros';
     const found = Merchants ? Merchants.find(desc) : null;
     if (found) return found;
     const t = ' ' + norm(desc) + ' ';
@@ -148,7 +190,7 @@
   // PDF
   const MES = { jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6, jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12 };
   const MONEY = /([-−+]\s?)?(R\$\s?)?([-−]\s?)?(\d{1,3}(?:\.\d{3})*,\d{2})(\s?[DC](?![a-zà-ú])|-(?!\d))?/gi;
-  const SKIP = /(saldo|total d|^total|resumo|limite|pagamento minimo|valor minimo|vencimento|pagina \d|ouvidoria|central de (atendimento|relacionamento)|cnpj|taxa de juros|custo efetivo|\bcet\b|encargos (de|do)|proxima fatura|fatura anterior|periodo|emitido em|extrato gerado|movimentacoes|lancamentos futuros|tem alguma duvida)/;
+  const SKIP = /(saldo|total d|^total|resumo|limite|pagamento minimo|valor minimo|vencimento|pagina \d|ouvidoria|central de (atendimento|relacionamento)|cnpj|taxa de juros|custo efetivo|\bcet\b|encargos (de|do)|proxima fatura|fatura anterior|periodo|emitido em|extrato gerado|movimentacoes|lancamentos futuros|tem alguma duvida|0800|\b40(04|20) ?\d{4}|atendimento 24|metropolitanas|demais localidades|horario de atendimento|deficiencia (auditiva|de fala)|\bsac\b|nu pagamentos|nu financeira|nubank\.com|asseguramos|valores em r\$)/;
 
   function pdfDate(s, refYear, refMonth) {
     let m;
@@ -232,6 +274,6 @@
     return wb.some((w) => wa.has(w) || [...wa].some((x) => x.startsWith(w) || w.startsWith(x)));
   }
 
-  const api = { parse, parsePDFLines, parseAmount, parseDate, guessCategory, merchantKey, similar, norm };
+  const api = { parse, parsePDFLines, parseAmount, parseDate, guessCategory, merchantKey, learnKeys, cnpjRoot, isPerson, similar, norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Statement = api;
 })(typeof window !== 'undefined' ? window : globalThis);
