@@ -20,19 +20,8 @@ const dataFile = () => path.join(app.getPath('userData'), 'prumo-dados.json');
 function readRaw(file = dataFile()) {
   if (!fs.existsSync(file)) return null;
   const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  // Nome antigo
-  if (!parsed || (parsed.format !== FORMAT && parsed.format !== 'finn')) throw new Error('Arquivo de dados inválido.');
+  if (!parsed || parsed.format !== FORMAT) throw new Error('Arquivo de dados inválido.');
   return parsed;
-}
-
-// Migração
-function migrateOldName() {
-  const file = dataFile();
-  if (fs.existsSync(file)) return;
-  const old = path.join(app.getPath('appData'), 'Finn', 'finn-dados.json');
-  if (!fs.existsSync(old)) return;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.copyFileSync(old, file);
 }
 
 function deriveKey(password, s) {
@@ -367,7 +356,6 @@ if (!app.requestSingleInstanceLock()) {
   // Notificações
   app.setAppUserModelId(app.isPackaged ? 'com.prumo.app' : process.execPath);
   app.whenReady().then(() => {
-    try { migrateOldName(); } catch (e) { console.error('Migração falhou:', e); }
     autoBackup();
     // Modelo de voz
     protocol.handle('prumo-model', (req) => {

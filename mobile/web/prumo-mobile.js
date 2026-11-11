@@ -32,7 +32,7 @@
 
   function parseRaw(text) {
     const parsed = JSON.parse(text);
-    if (!parsed || (parsed.format !== FORMAT && parsed.format !== 'finn')) throw new Error('Arquivo de dados inválido.');
+    if (!parsed || parsed.format !== FORMAT) throw new Error('Arquivo de dados inválido.');
     return parsed;
   }
   async function readRaw(path = FILE) {
