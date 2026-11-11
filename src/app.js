@@ -934,24 +934,35 @@ function invoiceHistory(c) {
 function dailyHistory(view) {
   return [1, 2, 3].map((i) => sum(spendOf(addMonths(ymNow(), -i), isMulti() ? view : null))).filter((v) => v > 0);
 }
+// Entradas que não se repetem sozinhas (Pix recebido, extras): média dos últimos meses
+function extraIncomeHistory(view) {
+  const of = (m) => sum(incomesOf(m, isMulti() ? view : null).filter((i) => i.month && !i.src));
+  const past = [1, 2, 3].map((i) => of(addMonths(ymNow(), -i))).filter((v) => v > 0);
+  if (past.length) return past;
+  const cur = of(ymNow()); // só tem o mês atual: usa ele
+  return cur > 0 ? [cur] : [];
+}
 const avgOf = (vals) => (vals.length ? sum(vals, (x) => x) / vals.length : 0);
 
 function forecast(view = currentView()) {
   const now = ymNow();
   const dailyAvg = avgOf(dailyHistory(view));
+  const extraAvg = avgOf(extraIncomeHistory(view));
   return Array.from({ length: 6 }, (_, i) => {
     const m = addMonths(now, i);
     const s = summary(m, view);
-    let est = 0;
+    let est = 0, incEst = 0;
     if (i > 0) {
       for (const c of data.cards) {
         if (invoiceOf(c, m) > 0) continue;
         est += avgOf(invoiceHistory(c)) * cardWeight(c, view, s.div);
       }
       if (dailyAvg > s.daily) est += dailyAvg - s.daily;
+      const extra = sum(incomesOf(m, isMulti() ? view : null).filter((x) => x.month && !x.src));
+      if (extraAvg > extra) incEst = extraAvg - extra; // entradas que costumam vir e ainda não foram lançadas
     }
-    const spent = s.spent + est;
-    return { m, income: s.income, spent, est, sobra: s.income - spent };
+    const spent = s.spent + est, income = s.income + incEst;
+    return { m, income, incEst, spent, est, sobra: income - spent };
   });
 }
 
@@ -1075,6 +1086,7 @@ function pagePrevisor() {
   const total = sum(rows, (r) => r.sobra);
   const worst = rows.reduce((a, b) => (b.sobra < a.sobra ? b : a));
   const anyEst = rows.some((r) => r.est > 0.005);
+  const anyInc = rows.some((r) => r.incEst > 0.005);
   const ICON = { bad: 'info', warn: 'info', ok: 'check', tip: 'spark' };
   const LVL = { bad: 'Urgente', warn: 'Atenção', ok: 'Tudo certo', tip: 'Dica' };
   const list = insights(rows, view);
@@ -1097,9 +1109,9 @@ function pagePrevisor() {
   ${list.length ? `<section class="card"><h3 class="card-title">O que observar</h3><div class="fc-list">${list.map((x) => `<div class="fc-item"><span class="fc-ic ${x.lvl}">${I[ICON[x.lvl]]}</span><div><div class="fc-lvl">${LVL[x.lvl]}</div><div>${x.text}</div></div></div>`).join('')}</div></section>` : ''}
   <section class="card"><h3 class="card-title">Mês a mês</h3>
     <table class="table" style="margin-top:8px"><thead><tr><th>Mês</th><th class="r">Renda</th><th class="r">Gastos</th><th class="r">Sobra</th><th class="r">Parte estimada</th></tr></thead><tbody>
-    ${rows.map((r) => `<tr><td>${monthLong(r.m)}</td><td class="r num">${money(r.income)}</td><td class="r num">${money(r.spent)}</td><td class="r amt num ${r.sobra < 0 ? 'negc' : ''}">${money(r.sobra)}</td><td class="r num muted">${r.est > 0.005 ? money(r.est) : '—'}</td></tr>`).join('')}
+    ${rows.map((r) => `<tr><td>${monthLong(r.m)}</td><td class="r num">${money(r.income)}${r.incEst > 0.005 ? ` <span class="muted">(${money(r.incEst)} estimado)</span>` : ''}</td><td class="r num">${money(r.spent)}</td><td class="r amt num ${r.sobra < 0 ? 'negc' : ''}">${money(r.sobra)}</td><td class="r num muted">${r.est > 0.005 ? money(r.est) : '—'}</td></tr>`).join('')}
     </tbody></table>
-    <p class="label" style="margin:12px 0 0">Previsão feita só com o que está no Prumo${anyEst ? '; onde ainda não há fatura lançada, usa a média das faturas recentes' : ''}. As dicas são de organização e não são recomendação de investimento.</p>
+    <p class="label" style="margin:12px 0 0">Previsão feita só com o que está no Prumo${anyEst ? '; onde ainda não há fatura lançada, usa a média das faturas recentes' : ''}${anyInc ? '; as entradas que não se repetem sozinhas (como Pix recebido) entram pela média dos últimos meses' : ''}. As dicas são de organização e não são recomendação de investimento.</p>
   </section>`;
 }
 
