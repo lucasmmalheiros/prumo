@@ -931,8 +931,18 @@ function invoiceHistory(c) {
   const now = ymNow();
   return [0, 1, 2, 3].map((i) => invoiceOf(c, addMonths(now, -i))).filter((v) => v > 0);
 }
+// Gasto do dia a dia que na verdade é uma conta fixa ou assinatura (ex.: boleto lançado antes de virar conta fixa)
+function fixedLike() {
+  const lead = (name) => Statement.merchantKey(name).split(" ").find((w) => w.length >= 4) || "";
+  return [...data.bills.filter((b) => !b.month), ...data.subs].map((x) => ({ w: lead(x.name), amount: Number(x.amount) || 0 })).filter((x) => x.w);
+}
+function isFixedSpend(x, fixed) {
+  const words = Statement.merchantKey(x.desc || "").split(" ");
+  return fixed.some((f) => words.includes(f.w) && Math.abs(Math.abs(x.amount) - f.amount) <= Math.max(2, f.amount * 0.1));
+}
 function dailyHistory(view) {
-  return [1, 2, 3].map((i) => sum(spendOf(addMonths(ymNow(), -i), isMulti() ? view : null))).filter((v) => v > 0);
+  const fixed = fixedLike();
+  return [1, 2, 3].map((i) => sum(spendOf(addMonths(ymNow(), -i), isMulti() ? view : null).filter((x) => !isFixedSpend(x, fixed)))).filter((v) => v > 0);
 }
 // Entradas que não se repetem sozinhas (Pix recebido, extras): média dos últimos meses
 function extraIncomeHistory(view) {
@@ -951,18 +961,19 @@ function forecast(view = currentView()) {
   return Array.from({ length: 6 }, (_, i) => {
     const m = addMonths(now, i);
     const s = summary(m, view);
-    let est = 0, incEst = 0;
+    let est = 0, incEst = 0, estCards = 0, estDaily = 0;
     if (i > 0) {
       for (const c of data.cards) {
         if (invoiceOf(c, m) > 0) continue;
-        est += avgOf(invoiceHistory(c)) * cardWeight(c, view, s.div);
+        estCards += avgOf(invoiceHistory(c)) * cardWeight(c, view, s.div);
       }
-      if (dailyAvg > s.daily) est += dailyAvg - s.daily;
+      if (dailyAvg > s.daily) estDaily = dailyAvg - s.daily;
+      est = estCards + estDaily;
       const extra = sum(incomesOf(m, isMulti() ? view : null).filter((x) => x.month && !x.src));
       if (extraAvg > extra) incEst = extraAvg - extra; // entradas que costumam vir e ainda não foram lançadas
     }
     const spent = s.spent + est, income = s.income + incEst;
-    return { m, income, incEst, spent, est, sobra: income - spent };
+    return { m, income, incEst, spent, est, estCards, estDaily, sobra: income - spent };
   });
 }
 
@@ -1111,6 +1122,7 @@ function pagePrevisor() {
     <table class="table" style="margin-top:8px"><thead><tr><th>Mês</th><th class="r">Renda</th><th class="r">Gastos</th><th class="r">Sobra</th><th class="r">Parte estimada</th></tr></thead><tbody>
     ${rows.map((r) => `<tr><td>${monthLong(r.m)}</td><td class="r num">${money(r.income)}${r.incEst > 0.005 ? ` <span class="muted">(${money(r.incEst)} estimado)</span>` : ''}</td><td class="r num">${money(r.spent)}</td><td class="r amt num ${r.sobra < 0 ? 'negc' : ''}">${money(r.sobra)}</td><td class="r num muted">${r.est > 0.005 ? money(r.est) : '—'}</td></tr>`).join('')}
     </tbody></table>
+    ${(() => { const r = rows.find((x) => x.est > 0.005); if (!r) return ""; const parts = [r.estDaily > 0.005 ? `<b>${money(r.estDaily)}</b> de gastos do dia a dia (média dos últimos meses)` : "", r.estCards > 0.005 ? `<b>${money(r.estCards)}</b> de faturas de cartão (média das últimas)` : ""].filter(Boolean); return `<div class="banner" style="margin-top:12px">${I.info}<div class="grow">Nos próximos meses, o Previsor soma ${parts.join(" e ")} por mês, porque esses gastos ainda não foram lançados. Se a média estiver alta, confira em Entradas e saídas se há algo lançado como compra do dia a dia que não se repete.</div></div>`; })()}
     <p class="label" style="margin:12px 0 0">Previsão feita só com o que está no Prumo${anyEst ? '; onde ainda não há fatura lançada, usa a média das faturas recentes' : ''}${anyInc ? '; as entradas que não se repetem sozinhas (como Pix recebido) entram pela média dos últimos meses' : ''}. As dicas são de organização e não são recomendação de investimento.</p>
   </section>`;
 }
