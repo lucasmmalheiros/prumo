@@ -1,0 +1,23 @@
+node_modules/
+dist/
+*.log
+
+# chaves de assinatura e senhas
+*.jks
+*.keystore
+keystore.properties
+local.properties
+.env*
+
+# projeto Android e interface gerados pelos scripts em mobile/
+mobile/android/
+mobile/www/
+
+# arquivos de terceiros pesados
+models/
+src/vendor/
+
+# dados do app
+*-dados.json
+*.json.bak
+backups/

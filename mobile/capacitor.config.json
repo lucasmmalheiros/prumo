@@ -1,0 +1,8 @@
+{
+  "appId": "com.prumo.app",
+  "appName": "Prumo",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false, "captureInput": false, "adjustMarginsForEdgeToEdge": "disable" },
+  "plugins": { "SplashScreen": { "launchAutoHide": true } }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "prumo-financas-pessoais",
+  "productName": "Prumo",
+  "version": "1.0.0",
+  "description": "Prumo — finanças pessoais no seu computador",
+  "author": "Prumo",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "instalador": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "vosk-browser": "0.0.8"
+  },
+  "build": {
+    "appId": "com.prumo.app",
+    "productName": "Prumo",
+    "copyright": "Prumo",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "secretary.js",
+      "src/**/*",
+      "models/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Prumo",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Instalar Prumo ${version}.${ext}"
+    }
+  }
+}

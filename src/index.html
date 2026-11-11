@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; frame-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prumo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="splash" aria-hidden="true">
+    <div class="splash-bob">
+      <span class="splash-line"></span>
+      <svg class="splash-mark" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#fff"/><path fill="#2563eb" fill-rule="evenodd" d="M31 20H49A19 19 0 0 1 49 58H45V80H31ZM45 32.5V45.5H49A6.5 6.5 0 0 0 49 32.5Z"/></svg>
+    </div>
+    <div class="splash-name">Prumo</div>
+  </div>
+  <div class="titlebar"><span class="titlebar-name">Prumo</span></div>
+  <div id="app"></div>
+  <div id="modal-root" hidden></div>
+  <div id="toast" hidden></div>
+  <script src="illustrations.js"></script>
+  <script src="statement.js"></script>
+  <script src="bank-parse.js"></script>
+  <script src="intent-model.js"></script>
+  <script src="intent.js"></script>
+  <script src="voice-commands.js"></script>
+  <script src="voice.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
