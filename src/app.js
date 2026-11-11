@@ -274,7 +274,18 @@ function normalize(d) {
 // Cálculos
 const invoiceOf = (c, m) => Number(c.invoices?.[m]) || 0;
 const cardDigits = (c) => (c.last4 ? ` •${c.last4}` : '');
-const incomesOf = (m, owner) => data.incomes.filter((i) => (!i.month || i.month === m) && (!owner || owner === 'casa' || i.owner === owner));
+// Renda do mês. Diárias: a estimativa some nos meses que já têm as diárias reais do extrato
+// (mês passado: vale o real; mês atual ou futuro: a estimativa completa o que ainda falta)
+function incomeIn(i, m) {
+  if (i.month) return i.month === m;
+  if (i.start && m < i.start) return false;
+  if (!i.daily) return true;
+  const real = data.incomes.filter((x) => x.src === i.id && x.month === m);
+  return !real.length || (m >= ymNow() && sum(real) < i.amount);
+}
+// Estimativa de diárias no mês atual: só o que ainda falta receber
+const incomeAmount = (i, m) => (i.daily && !i.month ? Math.max(0, i.amount - sum(data.incomes.filter((x) => x.src === i.id && x.month === m))) : i.amount);
+const incomesOf = (m, owner) => data.incomes.filter((i) => incomeIn(i, m) && (!owner || owner === 'casa' || i.owner === owner)).map((i) => (i.daily && !i.month ? { ...i, amount: incomeAmount(i, m), est: true } : i));
 const isPaid = (m, id) => !!data.payments[m]?.[id];
 const spendOf = (m, owner) => (data.spending[m] || []).filter((x) => !owner || owner === 'casa' || x.owner === owner);
 
@@ -1095,7 +1106,7 @@ function pagePrevisor() {
 // Páginas
 const pageHead = (title, sub, actions = '') => `<div class="page-head"><div><h2>${title}</h2>${sub ? `<p>${sub}</p>` : ''}</div><div style="display:flex;gap:8px">${actions}</div></div>`;
 const rowActions = (edit, del, id) => `<div class="actions"><button class="icon-btn sm ghost" data-action="${edit}" data-id="${esc(id)}" title="Editar">${I.pencil}</button><button class="icon-btn sm ghost" data-action="${del}" data-id="${esc(id)}" title="Excluir">${I.trash}</button></div>`;
-const recurLabel = (x) => (x.month ? `Só em ${monthShort(x.month)}` : 'Todo mês');
+const recurLabel = (x) => (x.days ? `${x.days} ${x.days === 1 ? 'diária' : 'diárias'} no extrato` : x.daily ? `Estimativa: ${money(x.rate)} por dia × ${x.perMonth} dias${x.est && x.amount < x.rate * x.perMonth - 0.01 ? ' (o que falta)' : ''}` :x.month ? `Só em ${monthShort(x.month)}` : 'Todo mês');
 
 function pageFluxo() {
   const s = summary(ui.month);
@@ -1161,12 +1172,17 @@ function pageReserva() {
 }
 
 function pageRenda() {
-  const list = data.incomes.filter((i) => !i.month || i.month === ui.month);
+  const raw = incomesOf(ui.month);
+  // diárias do extrato viram uma linha só por pessoa que pagou
+  const list = raw.filter((i) => !i.src);
+  const groups = new Map();
+  raw.filter((i) => i.src).forEach((i) => { const g = groups.get(i.src) || { ...(data.incomes.find((x) => x.id === i.src) || i), id: i.src, amount: 0, days: 0, month: ui.month }; g.amount += i.amount; g.days++; g.day = Math.max(g.day || 1, i.day || 1); groups.set(i.src, g); });
+  list.push(...groups.values());
   const multi = isMulti();
   const perPerson = multi ? ' · ' + people().map((p) => `${esc(p.name)}: <b>${money(sum(list.filter((i) => i.owner === p.id)))}</b>`).join(' · ') : '';
   return `<section class="card">${pageHead(L('Minha renda', 'Nossa renda'), `Salário e outras entradas. Total em ${monthLong(ui.month).toLowerCase()}: <b>${money(sum(list))}</b>${perPerson}`, `<button class="btn btn-primary" data-action="add" data-kind="income">${I.plus}Nova renda</button>`)}
     <table class="table"><thead><tr><th>Nome</th>${multi ? '<th>De quem</th>' : ''}<th>Dia</th><th>Recorrência</th><th class="r">Valor</th><th></th></tr></thead><tbody>
-    ${list.map((i) => `<tr class="income"><td>${esc(i.name)}</td>${multi ? `<td><span class="cat-dot">${pDot(personOf(i.owner))}${esc(personOf(i.owner).name)}</span></td>` : ''}<td class="num">${pad2(i.day || 1)}</td><td>${recurLabel(i)}</td><td class="r amt num">${money(i.amount)}</td><td>${rowActions('edit-income', 'del-income', i.id)}</td></tr>`).join('') || `<tr><td colspan="6" class="empty-note">Nenhuma renda cadastrada.</td></tr>`}
+    ${list.map((i) => `<tr class="income"><td>${esc(i.name)}</td>${multi ? `<td><span class="cat-dot">${pDot(personOf(i.owner))}${esc(personOf(i.owner).name)}</span></td>` : ''}<td class="num">${pad2(i.day || 1)}</td><td>${recurLabel(i)}</td><td class="r amt num">${money(i.amount)}</td><td>${i.days ? '' : rowActions('edit-income', 'del-income', i.id)}</td></tr>`).join('') || `<tr><td colspan="6" class="empty-note">Nenhuma renda cadastrada.</td></tr>`}
     </tbody></table></section>`;
 }
 
@@ -1730,8 +1746,10 @@ async function startImport(given) {
     formModal({ title: 'Não reconheci esse extrato', lead: res.bytes ? 'Não encontrei lançamentos nesse PDF. Se ele for uma foto ou digitalização, não dá para ler: baixe o extrato em PDF pelo app ou site do banco, ou use <b>OFX</b> ou <b>CSV</b>.' : 'Use o extrato em <b>PDF</b>, <b>OFX</b> ou <b>CSV</b> que o app ou site do banco oferece em "Exportar extrato".', fields: [], submit: 'Entendi', onSubmit: () => {} });
     return;
   }
-  const positives = parsed.rows.filter((r) => r.amount > 0).length;
-  const invert = parsed.kind === 'PDF' ? parsed.card : parsed.kind === 'CSV' && positives / parsed.rows.length > 0.7;
+  const pos = parsed.rows.filter((r) => r.amount > 0);
+  // muitas entradas de Pix/transferência = extrato de conta (ex.: quem recebe por dia), não fatura
+  const incoming = pos.filter((r) => /\b(recebid[oa]|deposito|salario|pix|transferencia|ted|doc)\b/.test(Statement.norm(r.desc))).length;
+  const invert = parsed.kind === 'PDF' ? parsed.card : parsed.kind === 'CSV' && pos.length / parsed.rows.length > 0.7 && incoming < pos.length * 0.3;
   const lastMonth = parsed.rows.map((r) => r.date.slice(0, 7)).sort().pop();
   imp = { name: res.name, kind: parsed.kind, rows: parsed.rows, invert, owner: defaultPerson(), cardId: data.cards[0]?.id || '', cardMonth: addMonths(lastMonth, 1) };
   suggestImport();
@@ -1789,7 +1807,37 @@ function suggestImport() {
       r.action = 'ignorar'; // entradas: salário etc. já estão cadastrados
     }
   }
+  if (!imp.invert) markDaily(imp.rows);
   imp.missing = imp.invert ? [] : missingBills(imp.rows);
+}
+
+// Diárias: 3 ou mais entradas parecidas da mesma origem no mesmo mês (ex.: R$ 50 por dia trabalhado)
+const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+function markDaily(rows) {
+  const groups = new Map();
+  rows.forEach((r) => { r.daily = null; });
+  for (const r of rows) {
+    if (r.amt <= 0 || r.dup || IGNORE_RE.test(Statement.norm(r.desc))) continue;
+    const k = Statement.merchantKey(r.desc);
+    if (k.length < 3) continue;
+    const g = k + '|' + r.m;
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(r);
+  }
+  const known = new Map(data.incomes.filter((i) => i.daily).map((i) => [i.key, i.rate]));
+  for (const list of groups.values()) {
+    const k = Statement.merchantKey(list[0].desc);
+    if (known.has(k)) { // já reconhecida antes: vale mesmo com poucas entradas
+      list.filter((r) => Math.abs(r.amt - known.get(k)) <= known.get(k) * 0.35).forEach((r) => { r.daily = k; r.action = 'renda'; r.auto = true; });
+      continue;
+    }
+    if (list.length < 3) continue;
+    const md = median(list.map((r) => r.amt));
+    if (md < 10 || md > 1000) continue;
+    const near = list.filter((r) => Math.abs(r.amt - md) <= md * 0.35);
+    if (near.length < 3) continue;
+    near.forEach((r) => { r.daily = Statement.merchantKey(r.desc); r.action = 'renda'; r.auto = true; });
+  }
 }
 
 // Contas fixas que venceram dentro do período do extrato e não apareceram nele
@@ -1827,7 +1875,7 @@ function renderImport() {
   const dates = imp.rows.map((r) => r.date).sort();
   const months = Array.from({ length: 4 }, (_, i) => addMonths(dates[dates.length - 1].slice(0, 7), i - 1));
   const cols = imp.invert ? 4 : 5;
-  const row = (r, i) => `<tr class="imp-row ${r.action === 'ignorar' ? 'muted-row' : ''}"><td class="num imp-d">${r.date.slice(8)}/${r.date.slice(5, 7)}</td><td class="imp-desc">${esc(r.desc)}${r.dup ? ' <span class="tag neutral">já importado</span>' : ''}</td><td class="r amt num ${r.amt > 0 ? 'pos' : ''}">${r.amt > 0 ? '+ ' : '− '}${money(Math.abs(r.amt))}</td>
+  const row = (r, i) => `<tr class="imp-row ${r.action === 'ignorar' ? 'muted-row' : ''}"><td class="num imp-d">${r.date.slice(8)}/${r.date.slice(5, 7)}</td><td class="imp-desc">${esc(r.desc)}${r.dup ? ' <span class="tag neutral">já importado</span>' : ''}${r.daily && r.action === 'renda' ? ' <span class="tag ok">diária</span>' : ''}</td><td class="r amt num ${r.amt > 0 ? 'pos' : ''}">${r.amt > 0 ? '+ ' : '− '}${money(Math.abs(r.amt))}</td>
         <td class="imp-act">${sel(`class="filter-select" data-imp="action" data-i="${i}"`, optsFor(r), r.action)}</td>
         ${imp.invert ? '' : `<td class="imp-cat">${['diaadia', 'conta', 'fixa'].includes(r.action) ? sel(`class="filter-select" data-imp="cat" data-i="${i}"`, cats, r.cat) : r.action === 'assinatura' ? '<span class="muted">Assinaturas</span>' : '<span class="muted">—</span>'}</td>`}</tr>`;
   const withIdx = imp.rows.map((r, i) => [r, i]);
@@ -1873,6 +1921,25 @@ function learnCategory(r) {
   if (keys.length > 3000) keys.slice(0, keys.length - 3000).forEach((k) => delete L[k]);
 }
 
+// Renda estimada de quem ganha por dia: valor da diária × dias por mês (pelo extrato)
+function dailyIncome(key, st) {
+  const all = st.rows.filter((r) => r.daily === key && r.action === 'renda');
+  let rec = data.incomes.find((i) => i.daily && i.key === key && i.owner === st.owner);
+  // só meses que já acabaram dizem quantos dias por mês (o mês atual ainda está pela metade)
+  const done = all.filter((r) => r.m < ymNow());
+  if (rec && !done.length) return rec;
+  const mine = done.length ? done : all;
+  const months = new Set(mine.map((r) => r.m));
+  if (!rec) {
+    rec = { id: uid(), name: 'Diárias · ' + cleanName(all[0].desc), daily: true, key, owner: st.owner, day: 28, start: all.map((r) => r.m).sort()[0] };
+    data.incomes.push(rec);
+  }
+  const rate = Math.round(median(mine.map((r) => r.amt)) * 100) / 100;
+  const perMonth = Math.max(1, Math.round(mine.length / months.size));
+  Object.assign(rec, { rate, perMonth, amount: Math.round(rate * perMonth * 100) / 100 });
+  return rec;
+}
+
 function applyImport() {
   const st = imp;
   const ok = st.rows.filter((r) => r.action !== 'ignorar');
@@ -1911,6 +1978,9 @@ function applyImport() {
     else if (r.action === 'conta') {
       const b = { id: uid(), name: r.desc.slice(0, 60), amount: -r.amt, day, category: r.cat, type: 'variavel', month: r.m, payer: st.owner, scope: 'pessoal', imported: true };
       data.bills.push(b); setPaid(r.m, b.id, true);
+    } else if (r.action === 'renda' && r.daily) {
+      const rec = dailyIncome(r.daily, st);
+      data.incomes.push({ id: uid(), name: rec.name, amount: r.amt, day, month: r.m, owner: st.owner, src: rec.id });
     } else if (r.action === 'renda') data.incomes.push({ id: uid(), name: r.desc.slice(0, 60), amount: r.amt, day, month: r.m, owner: st.owner });
     if (r.action !== 'fixa') c[r.action]++;
     data.imported[r.key] = true;
