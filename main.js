@@ -1,5 +1,5 @@
 'use strict';
-// Processo principal do Prumo: janela + armazenamento local (com criptografia opcional).
+// Processo principal
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, session, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -12,7 +12,7 @@ const VERSION = 1;
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 128 * 1024 * 1024 };
 
 let win = null;
-let key = null;    // chave AES derivada da senha (só em memória)
+let key = null;
 let salt = null;
 
 const dataFile = () => path.join(app.getPath('userData'), 'prumo-dados.json');
@@ -20,12 +20,12 @@ const dataFile = () => path.join(app.getPath('userData'), 'prumo-dados.json');
 function readRaw(file = dataFile()) {
   if (!fs.existsSync(file)) return null;
   const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  // 'finn' era o nome antigo do app; arquivos e backups dessa época continuam válidos.
+  // Nome antigo
   if (!parsed || (parsed.format !== FORMAT && parsed.format !== 'finn')) throw new Error('Arquivo de dados inválido.');
   return parsed;
 }
 
-// Traz os dados da versão com o nome antigo (pasta "Finn") na primeira abertura do Prumo.
+// Migração
 function migrateOldName() {
   const file = dataFile();
   if (fs.existsSync(file)) return;
@@ -74,8 +74,7 @@ function writeData(data) {
   autoBackup();
 }
 
-// Backup automático: uma cópia por dia, sem depender de a pessoa lembrar
-// A cópia é do arquivo como ele está no disco; com senha, ela continua criptografada.
+// Backup
 const AUTO_RE = /^prumo-auto-(\d{4}-\d{2}-\d{2})\.json$/;
 const KEEP_DAILY = 14;
 const KEEP_MONTHLY = 12;
@@ -99,7 +98,7 @@ function listBackups(dir) {
   return names.filter((n) => AUTO_RE.test(n)).map((n) => ({ name: n, date: n.match(AUTO_RE)[1], dir })).sort((a, b) => b.date.localeCompare(a.date));
 }
 
-// Mantém as cópias dos últimos dias e a primeira de cada um dos últimos meses.
+// Limpeza de backups
 function pruneBackups(dir) {
   const list = listBackups(dir);
   const keep = new Set(list.slice(0, KEEP_DAILY).map((b) => b.name));
@@ -110,7 +109,7 @@ function pruneBackups(dir) {
 }
 
 function writeBackup(dir) {
-  readRaw(); // nunca guarda uma cópia de um arquivo corrompido por cima das boas
+  readRaw();
   fs.mkdirSync(dir, { recursive: true });
   const target = path.join(dir, `prumo-auto-${localDate()}.json`);
   fs.copyFileSync(dataFile(), target + '.tmp');
@@ -139,7 +138,6 @@ function allBackups() {
   return [...listBackups(backupDir()), ...listBackups(defaultBackupDir())].filter((b) => !seen.has(b.name) && seen.add(b.name)).sort((a, b) => b.date.localeCompare(a.date));
 }
 
-// Ao criar, trocar ou tirar a senha, as cópias antigas não podem continuar abertas com a regra anterior.
 function purgeBackups() {
   const cfg = backupCfg();
   for (const dir of new Set([defaultBackupDir(), cfg.folder, ...(cfg.past || [])].filter(Boolean))) {
@@ -149,7 +147,7 @@ function purgeBackups() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Só aceita chamadas vindas da própria interface do app.
+// Segurança
 function guard(handler) {
   return async (event, ...args) => {
     const url = event.senderFrame && event.senderFrame.url;
@@ -201,7 +199,6 @@ ipcMain.handle('store:setPassword', guard(async ({ current, next, data }) => {
     key = null; salt = null;
   }
   writeData(data);
-  // Remove o backup antigo para não sobrar uma cópia no formato anterior.
   try { fs.unlinkSync(dataFile() + '.bak'); } catch {}
   try { fs.unlinkSync(dataFile() + '.antes-da-restauracao'); } catch {}
   purgeBackups();
@@ -304,7 +301,7 @@ ipcMain.handle('win:theme', guard((dark) => {
   return true;
 }));
 
-// Lê um extrato (OFX ou CSV) escolhido pela pessoa. A leitura do conteúdo é feita na interface.
+// Extrato
 ipcMain.handle('import:pick', guard(async () => {
   const res = await dialog.showOpenDialog(win, {
     title: 'Importar extrato do banco',
@@ -345,7 +342,7 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file://')) e.preventDefault(); });
   win.once('ready-to-show', () => { win.maximize(); if (!startHidden) win.show(); });
-  // Com a bandeja ligada, fechar a janela só esconde o Prumo (os avisos continuam).
+  // Bandeja
   let warned = false;
   win.on('close', (e) => {
     if (app.isQuitting || !secretary || !secretary.keepInTray()) return;
@@ -361,23 +358,23 @@ function createWindow() {
 }
 
 Menu.setApplicationMenu(null);
-// Só uma janela do Prumo por vez: abrir de novo traz a que já existe para frente.
+// Instância única
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', showWindow);
-  // Necessário para os avisos aparecerem no Windows.
+  // Notificações
   app.setAppUserModelId(app.isPackaged ? 'com.prumo.app' : process.execPath);
   app.whenReady().then(() => {
     try { migrateOldName(); } catch (e) { console.error('Migração falhou:', e); }
     autoBackup();
-    // Entrega só o modelo de voz em português, que roda inteiro neste computador.
+    // Modelo de voz
     protocol.handle('prumo-model', (req) => {
       const f = path.join(__dirname, 'models', 'vosk-pt.tar.gz');
       if (req.url !== 'prumo-model://vosk/pt.tar.gz' || !fs.existsSync(f)) return new Response('', { status: 404 });
       return new Response(fs.readFileSync(f), { headers: { 'Content-Type': 'application/gzip', 'Access-Control-Allow-Origin': '*' } });
     });
-    // A interface só pode pedir o microfone (áudio, nunca câmera); qualquer outra permissão é negada.
+    // Permissões
     const fromApp = (url) => String(url || '').startsWith('file://');
     session.defaultSession.setPermissionRequestHandler((wc, permission, done, details) => {
       const types = details.mediaTypes || [];

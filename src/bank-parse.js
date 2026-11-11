@@ -1,6 +1,5 @@
 'use strict';
-// Entende o texto de um aviso de banco: compra, Pix enviado ou dinheiro recebido.
-// Na dúvida devolve null: propaganda, compra recusada e lembretes não viram lançamento.
+// Avisos dos bancos
 (function (root) {
   const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 

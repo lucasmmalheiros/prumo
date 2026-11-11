@@ -1,7 +1,5 @@
 'use strict';
-// "Secretário" do Prumo: avisos de contas a vencer, ícone na bandeja e abrir com o Windows.
-// Funciona mesmo com a janela fechada, lendo uma lista de lembretes que a interface mantém atualizada.
-// Se os dados têm senha, a lista é salva SEM nomes nem valores (o aviso fica genérico).
+// Secretário
 const { app, Notification, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -20,7 +18,7 @@ const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDat
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const money = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0).replace(/ /g, ' ');
 
-// Ícone (P branco sobre azul) gerado em PNG, sem arquivos externos
+// Ícone
 function crc32(buf) {
   let c, crc = 0xffffffff;
   for (let n = 0; n < buf.length; n++) {
@@ -36,17 +34,16 @@ function chunk(type, data) {
   const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
   return Buffer.concat([len, td, crc]);
 }
-// foreground: só o P, com fundo transparente, para o ícone adaptável do Android.
 function iconPNG(size = 32, foreground = false) {
   const raw = Buffer.alloc((size * 4 + 1) * size);
-  const SUB = 4; // amostras por lado de cada pixel, para as bordas ficarem suaves
+  const SUB = 4;
   const CORNER = 0.22;
   const inSquare = (u, v) => {
     const cx = Math.min(Math.max(u, CORNER), 1 - CORNER), cy = Math.min(Math.max(v, CORNER), 1 - CORNER);
     return (u - cx) ** 2 + (v - cy) ** 2 <= CORNER ** 2;
   };
   const inP = (u, v) => {
-    if (u >= 0.31 && u <= 0.45 && v >= 0.2 && v <= 0.8) return true; // haste
+    if (u >= 0.31 && u <= 0.45 && v >= 0.2 && v <= 0.8) return true;
     const bowlX = 0.49, bowlY = 0.39, outer = 0.19, inner = 0.065;
     if (u < bowlX) return u >= 0.31 && Math.abs(v - bowlY) <= outer && Math.abs(v - bowlY) >= inner;
     const d = Math.hypot(u - bowlX, v - bowlY);
@@ -60,7 +57,7 @@ function iconPNG(size = 32, foreground = false) {
       for (let j = 0; j < SUB; j++) for (let i = 0; i < SUB; i++) {
         const u = (x + (i + 0.5) / SUB) / size, v = (y + (j + 0.5) / SUB) / size;
         if (foreground) {
-          const SCALE = 0.62; // o Android recorta as bordas do ícone
+          const SCALE = 0.62;
           if (inP(0.5 + (u - 0.5) / SCALE, 0.5 + (v - 0.5) / SCALE)) white++;
           continue;
         }
@@ -74,7 +71,6 @@ function iconPNG(size = 32, foreground = false) {
         continue;
       }
       if (!inside) continue;
-      // Mesmo degradê azul do logo dentro do app.
       const t = (x + y) / (2 * size);
       const blue = [79 + (29 - 79) * t, 134 + (78 - 134) * t, 255 + (216 - 255) * t];
       const w = white / inside;
@@ -127,7 +123,6 @@ function setup({ showWindow }) {
     return true;
   };
 
-  // Um aviso por dia (o primeiro momento em que o Prumo estiver rodando).
   const check = (force = false) => {
     const r = read();
     if (!r.enabled && !force) return;
@@ -153,15 +148,15 @@ function setup({ showWindow }) {
   };
 
   const applyStartup = (on) => {
-    // No modo de desenvolvimento, o Windows precisa abrir o Electron apontando para a pasta do app.
+    // Abrir com o Windows
     const args = app.isPackaged ? ['--hidden'] : [app.getAppPath(), '--hidden'];
     app.setLoginItemSettings({ openAtLogin: !!on, path: process.execPath, args });
   };
 
   const r0 = read();
   applyTray(r0.tray);
-  setTimeout(() => check(false), 15000);           // dá tempo da interface atualizar a lista
-  setInterval(() => check(false), 30 * 60 * 1000); // e confere de novo a cada 30 min
+  setTimeout(() => check(false), 15000);
+  setInterval(() => check(false), 30 * 60 * 1000);
 
   return {
     icon: appIcon,

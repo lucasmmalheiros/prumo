@@ -1,11 +1,11 @@
 'use strict';
-// Conversa com o Prumo: texto e voz na mesma janela, com reconhecimento offline (Vosk) e a animação do anel.
+// Conversa
 (function () {
-  const IDLE_UNLOAD_MS = 5 * 60 * 1000; // libera a memória do modelo depois de um tempo sem uso
+  const IDLE_UNLOAD_MS = 5 * 60 * 1000;
   const SILENCE_MS = 20 * 1000;
   const RING_SIZE = 150;
 
-  // Reconhecedor (quadro separado; ver voice-engine.js)
+  // Reconhecedor
   let engineFrame = null, engineReady = null, engineWaiter = null, engineCb = null, unloadTimer = null;
   const post = (m, transfer) => engineFrame.contentWindow.postMessage(m, '*', transfer || []);
 
@@ -44,7 +44,6 @@
   }
 
   // Anel
-  // O furo tem metade do diâmetro do anel, como na referência.
   const HOLE = 0.5;
   function ringEdge(ctx, cx, cy, r, amp, t, spin) {
     const N = 180;
@@ -66,8 +65,8 @@
     ctx.fill('evenodd');
   }
 
-  // Sessão de voz (vive dentro da conversa)
-  let s = null; // sessão aberta
+  // Sessão
+  let s = null;
   const el = (id) => document.getElementById(id);
 
   function setStatus(text, bad) {
@@ -78,7 +77,6 @@
   }
   function setText(text) { if (s) el('v-text').textContent = text; }
 
-  // O botão do microfone vira "parar" enquanto estiver ouvindo.
   function setBusy(on) {
     if (s) s.busy = on;
     const fab = document.querySelector('.voice-fab');
@@ -97,14 +95,13 @@
     const a = s.audio;
     s.audio = null;
     try { a.processor.disconnect(); a.source.disconnect(); } catch {}
-    a.stream.getTracks().forEach((tr) => tr.stop()); // apaga o microfone de verdade
+    a.stream.getTracks().forEach((tr) => tr.stop());
     engineCb = null;
     if (engineFrame) post({ cmd: 'stop' });
     a.ctx.close();
     scheduleUnload();
   }
 
-  // Encerra a escuta, mas deixa um aviso visível no lugar do anel.
   function endWith(message, autoHide) {
     if (!s) return;
     stopListening();
@@ -126,8 +123,8 @@
     let res;
     try { res = s.handle(text); } catch (e) { console.error(e); res = { ok: false, msg: 'Algo deu errado. Tente de novo.' }; }
     if (!s) return;
-    if (res.ok || res.close) { endVoice(); return; } // o que foi dito e a resposta já estão na conversa
-    s.hold = true; // continua ouvindo
+    if (res.ok || res.close) { endVoice(); return; }
+    s.hold = true;
     setStatus('Pode tentar de novo');
     armSilence();
   }
@@ -169,7 +166,7 @@
       };
       source.connect(analyser);
       source.connect(processor);
-      processor.connect(ctx.destination); // a saída fica em silêncio; a ligação só mantém o processamento ativo
+      processor.connect(ctx.destination);
       session.audio = { ctx, stream, source, analyser, processor, buf: new Float32Array(analyser.fftSize) };
       session.listening = true;
       setStatus('Pode falar');
@@ -194,7 +191,6 @@
       const speaking = s.target > 0.08;
       if (speaking !== s.speaking) { s.speaking = speaking; if (!s.hold) setStatus(speaking ? 'Ouvindo...' : 'Pode falar'); }
     }
-    // sobe rápido com a voz e desce devagar
     s.level += (s.target - s.level) * (s.target > s.level ? 0.35 : 0.09);
     const { ctx, size, color } = s;
     const c = size / 2;
@@ -240,26 +236,24 @@
     msgs.scrollTop = msgs.scrollHeight;
   }
 
-  // Janela da conversa (fora da área redesenhada pelo app, para não perder o que foi digitado)
+  // Janela
   let refreshChat = () => {};
   let openChat = () => {};
   let closeChat = () => {};
   let chatIsOpen = () => false;
   let dockEl = null;
-  let inline = false; // true quando a conversa está embutida na aba Previsor
+  let inline = false;
   const CHAT_TITLE = 'Conversa com o Prumo', INLINE_TITLE = 'Converse com o Previsor';
   const PLACEHOLDER = 'Escreva aqui, ex.: paguei o aluguel', INLINE_PLACEHOLDER = 'Pergunte algo, ex.: posso gastar 500 em janeiro?';
   const SUGGESTIONS = ['Como fica o mês que vem?', 'Qual o mês mais apertado?', 'Por que minha nota é essa?', 'Posso gastar R$ 500 este mês?', 'Me dá uma dica'];
 
-  // O app redesenha a página inteira; guarda onde o cursor estava para a conversa embutida não perder o foco.
   function saveFocus() {
     const input = el('cmd-input');
     return input && document.activeElement === input ? { start: input.selectionStart, end: input.selectionEnd } : null;
   }
 
-  // Coloca a mesma conversa dentro do Previsor, ou de volta no canto da janela nas outras abas.
   function place(focus) {
-    const dock = dockEl; // o redesenho tira a conversa do documento, então a busca por id não a acharia
+    const dock = dockEl;
     if (!dock) return;
     const slot = el('fc-chat-slot');
     if (slot) {
@@ -289,7 +283,7 @@
     }
   }
 
-  // O botão do microfone: abre a conversa e liga; se já estiver ouvindo, para.
+  // Microfone
   function open(handle) {
     openChat();
     if (s && s.busy) endVoice();
@@ -383,9 +377,9 @@
     refreshChat = drawChat;
     chatIsOpen = () => !chat.hidden;
     openChat = () => { if (chat.hidden) { hide(); chat.hidden = false; dock.classList.add('open'); drawChat(); } };
-    closeChat = () => { // fechar a janela sempre desliga o microfone
+    closeChat = () => {
       endVoice();
-      if (inline) return; // no Previsor a conversa fica sempre visível
+      if (inline) return;
       chat.hidden = true;
       dock.classList.remove('open');
     };
@@ -428,7 +422,7 @@
       let res;
       try { res = handle(text); } catch (err) { console.error(err); res = { ok: false, msg: 'Algo deu errado. Tente de novo.' }; }
       if (res.ok) input.value = '';
-      if (res.attach) openChat(); // o lugar de enviar o arquivo fica dentro da conversa
+      if (res.attach) openChat();
       else if (res.close) hide();
       else if (chat.hidden) show(res);
     });

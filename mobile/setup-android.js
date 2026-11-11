@@ -1,10 +1,9 @@
 'use strict';
-// Ajusta o projeto Android gerado pelo Capacitor. Pode rodar mais de uma vez.
+// Ajustes do projeto Android
 const fs = require('fs');
 const path = require('path');
 
-// A leitura dos avisos dos bancos fica desligada: o Play Protect bloqueia APKs de fora da loja com esse acesso.
-// Para gerar com ela: PRUMO_BANCOS=1.
+// Leitor de avisos dos bancos
 const READER = process.env.PRUMO_BANCOS === '1';
 const app = path.join(__dirname, 'android', 'app');
 const main = path.join(app, 'src', 'main');
@@ -13,12 +12,12 @@ const res = path.join(main, 'res');
 function edit(file, fn) { fs.writeFileSync(file, fn(fs.readFileSync(file, 'utf8'))); }
 
 edit(path.join(main, 'AndroidManifest.xml'), (x) => {
-  // Os dados financeiros não vão para o backup na nuvem do Google.
+  // Backup
   x = x.replace(/android:allowBackup="true"/, 'android:allowBackup="false"');
-  // O app não usa internet: sem esta permissão, o Android impede qualquer conexão.
+  // Internet
   x = x.replace(/\s*<uses-permission android:name="android\.permission\.INTERNET"\s*\/>/, '');
   x = x.replace(/android:configChanges="/, 'android:windowSoftInputMode="adjustResize"\n            android:configChanges="').replace(/(android:windowSoftInputMode="adjustResize"\s+)+/, 'android:windowSoftInputMode="adjustResize"\n            ');
-  // Serviço que recebe do Android os avisos dos bancos escolhidos.
+  // Serviço de avisos
   if (!READER) x = x.replace(/\s*<service android:name="\.BankNotificationListener"[\s\S]*?<\/service>/, '');
   if (READER && !x.includes('BankNotificationListener')) {
     x = x.replace('</application>', `    <service android:name=".BankNotificationListener" android:exported="true" android:label="Prumo: lançamentos dos bancos" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
@@ -26,7 +25,7 @@ edit(path.join(main, 'AndroidManifest.xml'), (x) => {
         </service>
     </application>`);
   }
-  // Coloca o Prumo na lista do "Compartilhar" para arquivos de extrato. PDF e imagem ficam de fora: o app não lê.
+  // Compartilhar
   if (!x.includes('android.intent.action.SEND"')) {
     const types = ['text/*', 'application/csv', 'application/vnd.ms-excel', 'application/x-ofx', 'application/ofx', 'application/vnd.intu.qfx', 'application/xml', 'application/octet-stream'];
     x = x.replace('</intent-filter>', `</intent-filter>
@@ -42,7 +41,7 @@ ${types.map((t) => `                <data android:mimeType="${t}" />`).join('\n'
   return x;
 });
 
-// Mantém a barra de status do sistema separada do conteúdo do app.
+// Barra de status
 edit(path.join(__dirname, 'android', 'variables.gradle'), (x) => x.replace(/targetSdkVersion = \d+/, 'targetSdkVersion = 34'));
 
 edit(path.join(app, 'build.gradle'), (x) => {
@@ -63,10 +62,10 @@ edit(path.join(app, 'build.gradle'), (x) => {
     buildTypes {`).replace(/(release \{\s*\n)/, '$1            signingConfig signingConfigs.prumoRelease\n');
 });
 
-// Cada APK gerado tem número de versão maior: o Android instala por cima do antigo e mantém os dados.
+// Versão
 edit(path.join(app, 'build.gradle'), (x) => x.replace(/versionCode \d+/, `versionCode ${Math.floor((Date.now() - Date.UTC(2026, 0, 1)) / 60000)}`));
 
-// Ícone do Prumo no lugar do padrão.
+// Ícone
 for (const dir of fs.readdirSync(res)) {
   if (dir.startsWith('mipmap-')) fs.rmSync(path.join(res, dir), { recursive: true, force: true });
 }
@@ -81,7 +80,7 @@ const ICON_XML = '<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:a
 for (const name of ['ic_launcher.xml', 'ic_launcher_round.xml']) fs.writeFileSync(path.join(adaptive, name), ICON_XML);
 fs.writeFileSync(path.join(res, 'values', 'ic_launcher_background.xml'), '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#2563EB</color>\n</resources>\n');
 
-// Leitura dos avisos dos bancos: guarda só avisos com valor, dos apps escolhidos, até o Prumo buscá-los.
+// Leitor de avisos
 const javaDir = path.join(main, 'java', 'com', 'prumo', 'app');
 fs.writeFileSync(path.join(javaDir, 'BankStore.java'), `package com.prumo.app;
 
@@ -106,7 +105,7 @@ final class BankStore {
     }
 
     static boolean allowed(Context c, String pkg) {
-        // Só a versão de teste aceita avisos publicados pelo terminal do emulador.
+        // Teste
         if ((c.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && "com.android.shell".equals(pkg)) return true;
         return prefs(c).getStringSet(PACKAGES, Collections.emptySet()).contains(pkg);
     }
@@ -177,7 +176,6 @@ public class BankNotificationListener extends NotificationListenerService {
             if (!(head + " " + text).contains("R$")) return;
             BankStore.add(this, sbn.getPackageName(), head, text, sbn.getPostTime());
         } catch (Exception ignored) {
-            // Um aviso com formato inesperado não pode derrubar o serviço.
         }
     }
 }
@@ -261,7 +259,7 @@ public class BankNotificationsPlugin extends Plugin {
 
 if (!READER) for (const name of ['BankStore.java', 'BankNotificationListener.java', 'BankNotificationsPlugin.java']) fs.rmSync(path.join(javaDir, name), { force: true });
 
-// Diz à tela se o app voltou do segundo plano e entrega os arquivos recebidos pelo "Compartilhar".
+// Plugin do app
 fs.writeFileSync(path.join(javaDir, 'PrumoAppPlugin.java'), `package com.prumo.app;
 
 import android.content.Intent;
@@ -310,7 +308,6 @@ public class PrumoAppPlugin extends Plugin {
         if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return;
         if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return;
         Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
-        // Evita abrir o mesmo arquivo de novo se o Android recriar a tela.
         getActivity().setIntent(new Intent(Intent.ACTION_MAIN));
         new Thread(() -> {
             JSObject file = read(uri);
@@ -321,7 +318,7 @@ public class PrumoAppPlugin extends Plugin {
 
     private JSObject read(Uri uri) {
         JSObject out = new JSObject();
-        // Só aceita o que outro app entregou com permissão; nunca um caminho direto de arquivo.
+        // Segurança
         if (uri == null || !"content".equals(uri.getScheme())) return out.put("error", "arquivo");
         try (InputStream in = getContext().getContentResolver().openInputStream(uri)) {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -342,14 +339,13 @@ public class PrumoAppPlugin extends Plugin {
         try (Cursor c = getContext().getContentResolver().query(uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
             if (c != null && c.moveToFirst() && c.getString(0) != null) return c.getString(0);
         } catch (Exception ignored) {
-            // Alguns apps não informam o nome.
         }
         return "extrato.csv";
     }
 }
 `);
 
-// Reserva o espaço da barra de status, da barra de navegação e do teclado.
+// Margens
 fs.writeFileSync(path.join(main, 'java', 'com', 'prumo', 'app', 'MainActivity.java'), `package com.prumo.app;
 
 import android.os.Bundle;
@@ -365,12 +361,12 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // O app já estava aberto, ou o Android o fechou em segundo plano para liberar memória.
+        // Reabertura
         warmStart = started || savedInstanceState != null;
         started = true;
         registerPlugin(PrumoAppPlugin.class);
 ${READER ? '        registerPlugin(BankNotificationsPlugin.class);\n' : ''}        super.onCreate(savedInstanceState);
-        // Azul até a abertura aparecer, para não piscar branco; depois volta ao normal.
+        // Cor da abertura
         WebView web = getBridge().getWebView();
         web.setBackgroundColor(0xFF3B76F6);
         getWindow().setStatusBarColor(0xFF3B76F6);
@@ -384,11 +380,11 @@ ${READER ? '        registerPlugin(BankNotificationsPlugin.class);\n' : ''}     
 }
 `);
 
-// Tela de abertura lisa, sem a logo padrão do Capacitor.
+// Abertura
 edit(path.join(res, 'values', 'styles.xml'), (x) => {
   const blue = x.replace(/@drawable\/splash|#eef1f7/g, '#3b76f6');
   if (blue.includes('windowSplashScreenBackground')) return blue;
-  // No Android 12 ou mais novo, o próprio sistema mostra uma tela antes do app: fica no mesmo azul, sem ícone.
+  // Android 12+
   return blue.replace(/(<style name="AppTheme\.NoActionBarLaunch"[^>]*>)/, '$1\n        <item name="windowSplashScreenBackground">#3b76f6</item>\n        <item name="windowSplashScreenAnimatedIcon">@android:color/transparent</item>');
 });
 console.log('android ajustado');

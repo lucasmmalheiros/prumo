@@ -1,5 +1,5 @@
 'use strict';
-// Frases de treino. "(a|b|)" sorteia uma opção (vazio vale); $A valor, $I item, $M mês, $B conta, $S origem de renda.
+// Frases de treino
 const SLOTS = {
   A: ['30', '49,90', '120', '1500', '1.200', 'r$ 50', '50 reais', 'trinta reais', 'cem', 'cem reais', 'duzentos reais', 'mil reais', 'dois mil', 'quinhentos', 'cinquenta conto', '20 pila', '15', '80', '300', '2000', 'vinte', 'quarenta reais', '12,50', '9,99'],
   I: ['mercado', 'pizza', 'uber', 'gasolina', 'padaria', 'farmacia', 'lanche', 'almoco', 'ifood', 'cinema', 'remedio', 'roupa', 'tenis', 'presente', 'cerveja', 'acai', 'estacionamento', 'oficina', 'pet shop', 'feira', 'barbeiro', 'salao', 'hamburguer', 'sorvete', 'bar', 'jantar', 'cafe', 'onibus', 'metro', 'sapato', 'livro', 'pneu', 'dentista', 'racao', 'churrasco', 'sushi'],
@@ -167,7 +167,7 @@ const T = {
   ],
 };
 
-// Frases comuns da vida que citam palavras do app, número ou nada disso. Precisam cair em "fora do assunto".
+// Fora do assunto
 SLOTS.N = ['2', '3', '5', '7', '10', '20', '30', '40', '200', 'cinco', 'dez', 'vinte', 'trinta'];
 const VIDA = [
   '(o|a|meu|minha) (ceu|porta|janela|rua|cidade|vizinho|chefe|tia|irma|primo|carro|casa|amigo|namorada|professor|cachorro|gato) (e|esta|ta|ficou|foi|mora|chegou|saiu|quebrou|sumiu|apareceu) (azul|aberta|fechada|legal|bonito|longe|em casa|cedo|tarde|ontem|na rua|de ferias|feliz|triste|em recife|em sao paulo|)',
@@ -184,7 +184,7 @@ const VIDA = [
 ];
 T.out = [...T.out, ...T.out, ...T.out, ...T.out, ...VIDA];
 
-// Gírias e jeito de falar da internet.
+// Gírias
 SLOTS.A.push('40 pau', '100 paus', '50 mango', '200 mangos', '30 pratas', '10 conto', '500 pila');
 SLOTS.I.push('gasosa', 'busao', 'rango', 'breja', 'role', 'marmita', 'lanchinho', 'balada', 'corrida');
 T.hello.push('(coe|coe mano|salve mano|salve parca|fala parca|fala vei|fala mano|eae parca|eae vei|eai mano|oi mano|ola mano|oi vei|fala tu mano|alo alo|tem alguem on|ta on)');

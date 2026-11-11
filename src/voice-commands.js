@@ -1,5 +1,5 @@
 'use strict';
-// Entende frases em português e devolve o comando correspondente. Não depende de como a voz foi captada.
+// Comandos
 (function () {
   const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
@@ -36,7 +36,7 @@
         if (!isNum(w)) break;
         if (w === 'mil') { total += (cur || 1) * 1000; cur = 0; prev = 0; }
         else if (w in WORDS) {
-          if (prev && WORDS[w] >= prev) break; // "dez cem" são dois números, não um
+          if (prev && WORDS[w] >= prev) break;
           cur += WORDS[w]; prev = WORDS[w];
         } else {
           if (j > i) break;
@@ -50,7 +50,7 @@
     return spans;
   }
 
-  // Separa valor em reais e dia de vencimento; devolve quais palavras já foram usadas.
+  // Valores
   function extract(t) {
     const spans = findSpans(t);
     const used = new Set();
@@ -111,7 +111,7 @@
   const BILL_STOP = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'conta', 'contas', 'boleto', 'fatura', 'cartao', 'mensalidade']);
   const sameWord = (a, b) => a === b || (a.length >= 5 && b.length >= 5 && lev(a, b) <= 1);
 
-  // Procura a conta citada na frase. Devolve { bill } ou { options } se mais de uma servir.
+  // Contas
   function findBill(toks, bills, wantPaid) {
     const scored = bills.map((b) => {
       const words = norm(b.name).split(/[^a-z0-9]+/).filter((w) => w && !BILL_STOP.has(w));
@@ -160,7 +160,7 @@
     return { type: 'fc', what: 'afford', amount, parcels: Math.max(1, parcels), month, rel };
   }
 
-  // Perguntas sobre a previsão. Só consultam: nunca lançam nada.
+  // Previsão
   function forecastIntent(tk, t, months) {
     const { month, rel } = monthRefs(t, months);
 
@@ -189,7 +189,7 @@
     if (/^(oi|ola|opa|e ai|eai|bom dia|boa tarde|boa noite|tudo bem|(oi|ola) tudo bem|ajuda|o que voce (faz|sabe fazer)|como funciona)$/.test(t)) return { type: 'hello' };
     if (/\b(extratos?|ofx)\b/.test(t)) return { type: 'statement' };
 
-    // Metas citadas pelo nome ("guardei 200 na viagem", "quanto falta para a viagem").
+    // Metas
     if (ctx.goals && ctx.goals.length && !/\breserva\b/.test(t) && !/\b(posso|consigo|da pra|da para|e se)\b/.test(t)) {
       const hit = findBill(tk.toks, ctx.goals, false).bill;
       if (hit) {
@@ -269,13 +269,13 @@
     return { type: 'unknown' };
   }
 
-  // Modelo próprio: entra quando as regras não resolvem a frase
+  // Modelo
   const CONVERSA = new Set(['hello', 'how', 'thanks', 'bye', 'who', 'help', 'praise', 'insult', 'ack', 'yes', 'no', 'out', 'broke']);
   const ALTERA_INTENT = new Set(['spend', 'income', 'pay', 'unpay', 'reserve_deposit', 'reserve_withdraw']);
   const ALTERA_REGRA = new Set(['spend', 'income', 'pay', 'unpay', 'reserve', 'goalmove']);
   const ALTERA_CMD = new Set(['spend', 'income', 'pay', 'unpay', 'reserve']);
-  const MINIMO = 0.55; // abaixo disso, o app diz que não entendeu
-  const CERTEZA = 0.9; // abaixo disso, o app pergunta antes de alterar seus dados
+  const MINIMO = 0.55;
+  const CERTEZA = 0.9;
   const PEDIDO_CLARO = /\b(lanc\w*|anot\w*|registr\w*|coloc\w*|bot\w*|mete|meti|poe|adicion\w*|inclu\w*|gastei|paguei|comprei|torrei|pedi|peguei|abasteci|acabei|tive|fiz|deu|saiu|foi|foram|custou|ficou|recebi|ganhei|entrou|caiu|pingou|chegou|depositaram|pagaram|deram|mandaram|transferiram|consegui|guard\w*|deposit\w*|separ\w*|jog\w*|manda|tir\w*|retir\w*|saqu\w*|saca\w*|resgat\w*|usei|precisei|larguei|queimei|soltei|deixei|mandei)\b/;
   const SO_INTENCAO = /\b(vou|vai|irei|preciso|tenho que|sem|quero|queria|deveria|pretendo|amanha|depois)\b/;
   const VERBO_NAV = /\b(abr\w*|vai|ir|va|mostra\w*|ver|volta\w*|entra\w*|muda\w*|troca\w*|lev\w*|acess\w*|tela|pagina|aba)\b/;
@@ -314,7 +314,6 @@
     }
   }
 
-  // As regras têm prioridade. O modelo resolve o que elas não entenderam e confere o que elas iam lançar.
   function understand(text, ctx = {}, classify) {
     const rule = parse(text, ctx);
     if (!classify) return rule;
@@ -324,11 +323,9 @@
     const { intent, p } = classify(text);
     const rulesGaveUp = rule.type === 'unknown' || rule.type === 'hello' || (rule.type === 'need' && rule.reason !== 'qual')
       || (rule.type === 'month' && rule.month && tk.toks.length > 1 && !VERBO_NAV.test(t));
-    // Frase longa que só cita "renda" ou "cartão" não é pedido para trocar de tela.
     const citouTela = rule.type === 'nav' && tk.toks.length > 2 && !VERBO_NAV.test(t);
     const semRegra = citouTela ? { type: 'unknown' } : rule;
     if (!rulesGaveUp && !citouTela) {
-      // "vou pagar a luz amanhã" é plano, não pagamento feito.
       const duvida = ALTERA_REGRA.has(rule.type) && (SO_INTENCAO.test(t) || (p >= CERTEZA && !ALTERA_INTENT.has(intent) && intent !== 'newbill'));
       return duvida ? { type: 'confirm', cmd: rule } : rule;
     }
@@ -337,7 +334,6 @@
     const cmd = fromIntent(intent, tk, t, ctx);
     if (!cmd) return semRegra;
     if (!ALTERA_CMD.has(cmd.type)) return cmd;
-    // Conta nunca muda só pelo palpite do modelo; valores só com pedido explícito e alta certeza.
     const direto = cmd.type !== 'pay' && cmd.type !== 'unpay' && p >= CERTEZA && PEDIDO_CLARO.test(t) && !SO_INTENCAO.test(t);
     return direto ? cmd : { type: 'confirm', cmd };
   }

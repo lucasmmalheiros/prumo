@@ -1,6 +1,5 @@
 'use strict';
-// Leitura de extratos bancários (OFX e CSV): tudo acontece no seu computador.
-// Resultado: lançamentos { date: 'AAAA-MM-DD', desc, amount } com amount < 0 para saídas.
+// Extratos
 (function (root) {
   const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -44,7 +43,6 @@
   }
   const decodeEntities = (s) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 
-  // Divide uma linha CSV respeitando aspas.
   function splitCSV(line, sep) {
     const out = []; let cur = ''; let q = false;
     for (let i = 0; i < line.length; i++) {
@@ -63,7 +61,6 @@
     if (lines.length < 2) return [];
     const first = lines.slice(0, 5).join('\n');
     const sep = [';', '\t', ','].map((s) => [s, first.split(s).length]).sort((a, b) => b[1] - a[1])[0][0];
-    // Procura a linha de cabeçalho nas primeiras linhas (alguns bancos colocam um título antes).
     let hi = 0, header = null;
     for (let i = 0; i < Math.min(lines.length, 10); i++) {
       const cells = splitCSV(lines[i], sep).map(norm);
@@ -78,7 +75,6 @@
       iDesc = header.findIndex((c) => /(descri|histor|lancamento|title|titulo|estabelecimento|memo|detalhe|identifica)/.test(c) && !/^(data|date)/.test(c));
       if (iDesc === -1) iDesc = header.findIndex((c, i) => i !== iDate && i !== iAmt);
     } else {
-      // Sem cabeçalho: adivinha pelas colunas da primeira linha.
       const cells = splitCSV(lines[0], sep);
       iDate = cells.findIndex((c) => parseDate(c));
       iAmt = cells.findIndex((c, i) => i !== iDate && Number.isFinite(parseAmount(c)) && /\d/.test(c));
@@ -108,8 +104,7 @@
     return { kind: isOFX ? 'OFX' : 'CSV', rows };
   }
 
-  // Sugestão de categoria pelo texto do lançamento.
-  // A ordem importa: "mercado livre" é compra, não mercado; "amazon prime" é assinatura, não compra.
+  // Categorias
   const RULES = [
     ['impostos', /(iptu|ipva|darf|detran|licenciamento|multa|cartorio|receita federal)/],
     ['dividas', /(emprestimo|consignado|renegocia|acordo|parcela acordo)/],
@@ -130,7 +125,6 @@
     return hit ? hit[0] : 'outros';
   }
 
-  // Semelhança simples entre textos (palavras em comum).
   function similar(a, b) {
     const wa = new Set(norm(a).split(/[^a-z0-9]+/).filter((w) => w.length > 2));
     const wb = norm(b).split(/[^a-z0-9]+/).filter((w) => w.length > 2);

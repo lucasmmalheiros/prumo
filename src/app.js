@@ -45,7 +45,7 @@ const monthShort = (ym) => `${MESES_C[ymParts(ym)[1] - 1]} ${String(ymParts(ym)[
 const daysIn = (ym) => { const [y, m] = ymParts(ym); return new Date(y, m, 0).getDate(); };
 const clampDay = (d, ym) => Math.min(Math.max(1, d || 1), daysIn(ym));
 
-// As chaves ficam iguais às das versões antigas; só os nomes mudaram.
+// Categorias
 const CATS = {
   moradia: { label: 'Moradia', color: '#2563eb' },
   alimentacao: { label: 'Comida e mercado', color: '#f59e0b' },
@@ -65,12 +65,10 @@ const CATS = {
   diaadia: { label: 'Dia a dia', color: '#cbd5e1' },
 };
 const CUSTOM_COLORS = ['#0ea5e9', '#d946ef', '#84cc16', '#f97316', '#06b6d4', '#a855f7', '#eab308', '#10b981'];
-// Categoria (padrão ou criada por você). O nome vem escapado, pronto para HTML.
 function catInfo(k) {
   const c = CATS[k] || data?.customCats?.[k];
   return c ? { label: esc(c.label), color: c.color } : { label: CATS.outros.label, color: CATS.outros.color };
 }
-// Opções para listas de seleção (nomes sem escapar): padrões + as que você criou e estão em uso.
 function catOptions(outrosLabel = 'Outros') {
   const base = Object.entries(CATS).filter(([k]) => !['cartao', 'diaadia', 'outros'].includes(k)).map(([k, v]) => [k, v.label]);
   const used = new Set(data.bills.map((b) => b.category));
@@ -79,7 +77,7 @@ function catOptions(outrosLabel = 'Outros') {
 }
 const TYPE_LABEL = { fixa: 'Fixa', variavel: 'Variável', cartao: 'Cartão' };
 const CARD_STYLES = [['banco', 'Cor do banco'], ['grafite', 'Grafite'], ['azul', 'Azul'], ['laranja', 'Laranja'], ['roxo', 'Roxo'], ['verde', 'Verde'], ['vinho', 'Vinho']];
-// Bancos mais usados no Brasil: [id, nome, cor inicial, cor final, cor do texto]
+// Bancos
 const BANKS = [
   ['nubank', 'Nubank', '#9b3ce0', '#5c0a9c', '#fff'],
   ['itau', 'Itaú', '#ff8a1a', '#e05d00', '#fff'],
@@ -99,7 +97,7 @@ const BANKS = [
   ['outro', 'Outro banco', null, null, null],
 ];
 const bankOf = (c) => BANKS.find((b) => b[0] === c.bank);
-// Selo de cada banco no cartão: sigla nas cores do banco (não são os logotipos oficiais).
+// Selos
 const BANK_MARKS = { nubank: 'nu', itau: 'itaú', bradesco: 'BR', bb: 'BB', caixa: 'CX', santander: 'ST', inter: 'in', c6: 'C6', btg: 'BTG', xp: 'XP', picpay: 'PP', mercadopago: 'MP', pagbank: 'PB', neon: 'ne', sicredi: 'SI' };
 function bankMark(b) {
   const t = b && BANK_MARKS[b[0]];
@@ -115,7 +113,7 @@ function cardLook(c) {
 }
 const catDot = (k) => `<span class="dot" style="background:${catInfo(k).color}"></span>`;
 
-// Serviços de assinatura mais comuns: [id, nome, fundo, texto, sigla]. Siglas próprias, não os logotipos oficiais.
+// Serviços
 const SERVICES = [
   ['netflix', 'Netflix', '#e50914', '#fff', 'N'],
   ['spotify', 'Spotify', '#1ed760', '#06301a', 'S'],
@@ -180,14 +178,13 @@ let data = null;
 let store = { encrypted: false };
 const ui = { page: 'visao', month: ymNow(), day: null, cardIdx: 0, pop: null, popYear: null, billFilter: 'todas', view: null, housingBase: 'meu' };
 
-// Pessoas da casa
+// Pessoas
 const PERSON_COLORS = [['#2563eb', 'Azul'], ['#f43f5e', 'Rosa'], ['#16a34a', 'Verde'], ['#f59e0b', 'Amarelo'], ['#8b5cf6', 'Roxo'], ['#0ea5e9', 'Celeste']];
 const MAX_PEOPLE = 6;
 const people = () => data.household.people;
 const isMulti = () => people().length > 1;
 const personOf = (id) => people().find((p) => p.id === id) || people()[0];
 const personOptions = () => people().map((p) => [p.id, p.name]);
-// Quem está sendo visto no painel: uma pessoa ou 'casa' (todos juntos).
 function currentView() {
   if (!isMulti()) return people()[0].id;
   if (ui.view === 'casa') return 'casa';
@@ -251,7 +248,6 @@ function emptyData(names = ['Você'], split = 'renda') {
 function normalize(d) {
   d.meta ||= {}; d.profile ||= { name: 'Você' };
   d.settings = { housingRef: 30, ...(d.settings || {}) };
-  // "Claro" era o padrão antigo, não uma escolha: sem escolha, segue o tema do aparelho.
   if (d.settings.theme === 'light' && !d.settings.themePicked) delete d.settings.theme;
   d.settings.bankBanks ||= BANKS.filter((b) => b[0] !== 'outro').map((b) => b[0]);
   d.pendingBank ||= [];
@@ -260,7 +256,6 @@ function normalize(d) {
   d.settings.secretary = { enabled: true, tray: true, startup: false, daysBefore: 2, ...(d.settings.secretary || {}) };
   d.reserve = { balance: 0, goal: 0, history: [], ...(d.reserve || {}) };
   d.cards.forEach((c) => { c.invoices ||= {}; });
-  // Versões antigas eram só de uma pessoa: vira uma casa com 1 pessoa.
   if (!d.household?.people?.length) {
     d.household = { people: [{ id: 'p1', name: d.profile.name || 'Você', color: PERSON_COLORS[0][0], daily: Number(d.settings.dailyBudget) || 0 }], split: 'renda', custom: {} };
   }
@@ -278,11 +273,9 @@ function normalize(d) {
 
 // Cálculos
 const invoiceOf = (c, m) => Number(c.invoices?.[m]) || 0;
-// Só os 4 últimos dígitos são guardados: é o que aparece em comprovantes e não permite usar o cartão.
 const cardDigits = (c) => (c.last4 ? ` •${c.last4}` : '');
 const incomesOf = (m, owner) => data.incomes.filter((i) => (!i.month || i.month === m) && (!owner || owner === 'casa' || i.owner === owner));
 const isPaid = (m, id) => !!data.payments[m]?.[id];
-// Gastos soltos importados do extrato (contam no "dia a dia").
 const spendOf = (m, owner) => (data.spending[m] || []).filter((x) => !owner || owner === 'casa' || x.owner === owner);
 
 function billsOf(m) {
@@ -291,7 +284,6 @@ function billsOf(m) {
     const v = invoiceOf(c, m);
     if (v > 0) list.push({ id: 'card:' + c.id, cardId: c.id, name: 'Fatura ' + c.name + cardDigits(c), amount: v, day: c.dueDay, category: 'cartao', type: 'cartao', kind: 'card', payer: c.owner, scope: c.scope });
   }
-  // Assinaturas no cartão já estão na fatura; só as pagas por Pix, boleto ou débito viram conta do mês.
   for (const s of data.subs) {
     if (s.pay === 'conta' && subChargesIn(s, m)) list.push({ id: 'sub:' + s.id, subId: s.id, name: s.name, amount: s.amount, day: s.day, category: 'assinaturas', type: 'fixa', kind: 'sub', payer: s.payer, scope: s.scope });
   }
@@ -299,7 +291,6 @@ function billsOf(m) {
   return list.sort((a, b) => a.day - b.day || a.name.localeCompare(b.name));
 }
 
-// Quanto (0–1) cada pessoa assume das contas da casa.
 function shares(m) {
   const ps = people(); const h = data.household; const out = {};
   const even = () => ps.forEach((p) => { out[p.id] = 1 / ps.length; });
@@ -315,7 +306,7 @@ function shares(m) {
   return out;
 }
 
-// Divisão das contas da casa: parte justa de cada um, quanto cada um pagou e quem devolve para quem.
+// Divisão
 function division(m) {
   const house = billsOf(m).filter((b) => b.scope === 'casa');
   const total = sum(house);
@@ -354,7 +345,6 @@ function summary(m, view = currentView()) {
     personal = bills.filter((b) => b.scope !== 'casa');
     income = sum(incomesOf(m, view)); casa = div.total * div.shares[view]; daily = personOf(view).daily;
   }
-  // Dia a dia: vale o maior entre o orçamento e o que já foi gasto (importado do extrato).
   const dailyBudget = Number(daily) || 0;
   const dailyActual = sum(spendOf(m, multi ? view : null));
   daily = Math.max(dailyBudget, dailyActual);
@@ -364,14 +354,12 @@ function summary(m, view = currentView()) {
   return { m, view, multi, div, bills, personal, income, casa, ...g, daily, dailyBudget, dailyActual, spent, sobra: income - spent };
 }
 
-// Cartões mostrados no painel: os da pessoa vista + os da casa.
 function visibleCards() {
   const v = currentView();
   if (!isMulti() || v === 'casa') return data.cards;
   return data.cards.filter((c) => c.owner === v || c.scope === 'casa');
 }
 
-// Situação de uma conta em relação a hoje.
 function dueInfo(b, m) {
   if (b.paid) return { cls: 'ok', text: 'Paga' };
   const now = ymNow();
@@ -396,7 +384,6 @@ function persist() {
   return saving;
 }
 function commit() {
-  // Desfazer volta a uma foto dos dados; depois de outra alteração, isso apagaria o que veio depois.
   if (lastUndo) { lastUndo = null; PrumoVoice.refreshChat(); }
   persist(); render(); syncSecretary();
 }
@@ -426,7 +413,6 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 });
 
 // Layout
-// Textos no singular ("Minha casa") ou plural ("Nossa casa") conforme o número de pessoas.
 const L = (single, multi) => (isMulti() ? multi : single);
 const NAV = () => [['visao', 'Início', 'grid'], ['fluxo', 'Entradas e saídas', 'flow'], ['cartoes', 'Cartões', 'card'], ['casa', L('Minha casa', 'Nossa casa'), 'home'], ['reserva', L('Minha reserva', 'Nossa reserva'), 'safe'], ['metas', 'Metas', 'target'], ['previsor', 'Previsor', 'trend']];
 const NAV2 = () => [['renda', L('Minha renda', 'Nossa renda'), 'income'], ['contas', L('Minhas contas', 'Contas da casa'), 'list'], ['config', 'Configurações', 'settings']];
@@ -495,7 +481,7 @@ function topbar() {
   </div>`;
 }
 
-// Faixa com 7 meses lado a lado, mostrando o número que importa em cada tela.
+// Faixa de meses
 const STRIP = {
   fluxo: ['Sobra do mês', (m) => summary(m).sobra],
   cartoes: ['Total das faturas', (m) => sum(visibleCards(), (c) => invoiceOf(c, m))],
@@ -544,7 +530,7 @@ function sampleBanner() {
     <button class="btn" data-action="sample-keep">Manter e editar</button><button class="btn btn-primary" data-action="sample-clear">Começar do zero</button></div>`;
 }
 
-// Painel (visão geral)
+// Painel
 function cardSaldo(s) {
   const segs = s.multi ? [
     [s.view === 'casa' ? 'Contas da casa' : 'Sua parte da casa', s.casa, 'var(--navy)'],
@@ -563,7 +549,6 @@ function cardSaldo(s) {
   else if (s.sobra < 0) trend = `<div class="trend bad">${I.arrowDown}Gastos passam a renda</div><div class="label">faltam ${money(-s.sobra)} para fechar o mês</div>`;
   else trend = `<div class="trend ${livre < 10 ? 'warn' : ''}">${I.arrowUp}${fmtPct(livre)} da renda livre</div><div class="label">valor estimado após pagar todas as contas</div>`;
 
-  // "No prumo": o fio fica reto quando sobra uma boa parte da renda e vai inclinando conforme aperta.
   const level = !s.income ? null : s.sobra < 0 ? ['fora', 'Fora do prumo'] : livre < 10 ? ['quase', 'Quase no prumo'] : ['ok', 'No prumo'];
   const plumb = level ? `<span class="plumb-tag ${level[0]}" title="${livre >= 10 ? 'Sobram 10% ou mais da renda' : 'O ideal é sobrar pelo menos 10% da renda'}"><i class="plumb-ico">${PLUMB_SVG}</i>${level[1]}</span>` : '';
   const bar = segs.filter(([, v]) => v > 0).map(([, v, c]) => `<span style="flex-grow:${v};background:${c}"></span>`).join('')
@@ -620,7 +605,6 @@ function cardCategorias(s) {
   const add = (k, v) => { groups[k] = (groups[k] || 0) + v; };
   if (!s.multi) s.bills.forEach((b) => add(b.category, b.amount));
   else {
-    // Pessoais de quem está sendo visto + a parte dele(a) em cada conta da casa.
     const f = s.view === 'casa' ? 1 : s.div.shares[s.view];
     s.personal.forEach((b) => add(b.category, b.amount));
     s.div.house.forEach((b) => add(b.category, b.amount * f));
@@ -695,7 +679,7 @@ function housingIcon(name) {
   return I.home;
 }
 
-// Custo de moradia de quem está sendo visto (com a parte de cada conta da casa).
+// Moradia
 function housingFor(s) {
   const all = billsOf(s.m).filter((b) => b.category === 'moradia');
   if (!s.multi) return { items: all.map((b) => ({ b, v: b.amount })), base: s.income };
@@ -764,7 +748,7 @@ function cardReserva() {
   </section>`;
 }
 
-// Card "Divisão da casa" (aparece com 2 ou mais pessoas).
+// Divisão da casa
 function cardDivisao(s) {
   const d = s.div;
   const m = s.m;
@@ -795,7 +779,7 @@ function cardDivisao(s) {
   </section>`;
 }
 
-// Ordem dos blocos da Visão geral. Cada posição tem um formato fixo; arrastar troca dois blocos de lugar.
+// Ordem dos blocos
 const LAYOUT = {
   single: ['saldo', 'categorias', 'cartoes', 'contas', 'moradia', 'reserva', 'assinaturas'],
   multi: ['saldo', 'divisao', 'cartoes', 'contas', 'moradia', 'categorias', 'reserva', 'assinaturas'],
@@ -803,7 +787,6 @@ const LAYOUT = {
 function layoutOrder(mode) {
   const def = LAYOUT[mode];
   let cur = data.settings.layout?.[mode];
-  // Ordem salva antes de existir o bloco de assinaturas: mantém a ordem e põe o bloco novo no fim.
   if (Array.isArray(cur) && !cur.includes('assinaturas')) cur = [...cur, 'assinaturas'];
   return Array.isArray(cur) && cur.length === def.length && def.every((k) => cur.includes(k)) ? [...cur] : [...def];
 }
@@ -835,7 +818,6 @@ function subNextRow({ x, n }) {
     <div class="grow"><div class="nm">${esc(x.name)}</div><div class="muted">${x.cycle === 'anual' ? 'anual · ' : ''}${esc(subPayLabel(x))}</div></div>
     <div class="sub-row-end"><div class="num amt">${money(x.amount)}</div><div class="muted">${end}</div></div></button>`;
 }
-// Bloco do Início: custo mensal e a lista em ordem de cobrança. Tocar numa assinatura abre a edição.
 function cardAssinaturas() {
   const list = visibleSubs();
   const active = list.filter(subActive);
@@ -852,7 +834,6 @@ function cardAssinaturas() {
     : `<div class="empty-note">Streaming, música, nuvem, academia... cadastre aqui ou marque como assinatura ao importar o extrato.<br><br><button class="btn" data-action="add" data-kind="sub">${I.plus}Adicionar assinatura</button></div>`}
   </section>`;
 }
-// Reconhece o serviço pelo texto do extrato.
 const SERVICE_RE = [
   ['netflix', /netflix/], ['spotify', /spotify/], ['disney', /disney/], ['max', /\bhbo|\bmax\b/], ['primevideo', /prime ?video/],
   ['amazonprime', /amazon ?prime|amzn ?prime|prime ?amazon/], ['globoplay', /globoplay/], ['youtube', /youtube|google ?youtube/],
@@ -862,7 +843,6 @@ const SERVICE_RE = [
   ['ifood', /ifood ?clube|clube ?ifood/], ['meli', /meli ?\+|meli ?plus/], ['uberone', /uber ?one/],
 ];
 const guessService = (desc) => (SERVICE_RE.find(([, re]) => re.test(Statement.norm(desc))) || [])[0] || null;
-// Assinatura vinda do extrato: reaproveita a que já existe do mesmo serviço; senão cria.
 function subFromImport(r, owner, pay) {
   const service = guessService(r.desc) || 'outro';
   const name = service === 'outro' ? r.desc.replace(/\s+/g, ' ').trim().slice(0, 40) : SERVICES.find((s) => s[0] === service)[1];
@@ -876,7 +856,7 @@ function subFromImport(r, owner, pay) {
   return s;
 }
 
-// Arrastar blocos pela alça de 6 pontinhos.
+// Arrastar
 let drag = null;
 function endDrag(drop) {
   if (!drag) return;
@@ -925,7 +905,6 @@ document.addEventListener('pointerup', () => endDrag(true));
 document.addEventListener('pointercancel', () => endDrag(false));
 
 // Previsor
-// Parte de cada cartão que pesa em quem está sendo visto.
 function cardWeight(c, view, div) {
   if (!isMulti() || view === 'casa') return 1;
   if (c.scope === 'casa') return div.shares[view];
@@ -935,13 +914,11 @@ function invoiceHistory(c) {
   const now = ymNow();
   return [0, 1, 2, 3].map((i) => invoiceOf(c, addMonths(now, -i))).filter((v) => v > 0);
 }
-// Média do que foi realmente gasto no dia a dia nos 3 últimos meses fechados.
 function dailyHistory(view) {
   return [1, 2, 3].map((i) => sum(spendOf(addMonths(ymNow(), -i), isMulti() ? view : null))).filter((v) => v > 0);
 }
 const avgOf = (vals) => (vals.length ? sum(vals, (x) => x) / vals.length : 0);
 
-// Próximos 6 meses: o que está cadastrado + estimativas onde ainda não há valor (faturas e dia a dia).
 function forecast(view = currentView()) {
   const now = ymNow();
   const dailyAvg = avgOf(dailyHistory(view));
@@ -964,7 +941,7 @@ function forecast(view = currentView()) {
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const fmt1 = (v) => v.toFixed(1).replace('.', ',');
 
-// Nota de 0 a 100, com o motivo de cada parte.
+// Nota
 function healthScore(rows, view = currentView()) {
   const m = ymNow();
   const s = summary(m, view);
@@ -984,7 +961,6 @@ function healthScore(rows, view = currentView()) {
     { label: 'Reserva', max: 20, pts: 20 * clamp01(months / 6), why: `cobre ${fmt1(months)} ${months >= 1 && months < 2 ? 'mês' : 'meses'} de gastos (ideal: 6)` },
     { label: 'Próximos meses', max: 10, pts: 10 * (1 - neg / 6), why: neg ? `${neg} de 6 meses no negativo` : 'nenhum mês no negativo' },
   ];
-  // Mês negativo previsto impede nota alta, mesmo com o resto em ordem.
   const raw = Math.round(sum(parts, (p) => p.pts));
   const capped = neg > 0 && raw > 59;
   const total = capped ? 59 : raw;
@@ -992,7 +968,7 @@ function healthScore(rows, view = currentView()) {
   return { total, band, parts, capped };
 }
 
-// Dicas ligadas aos números da pessoa. Falam de organização, nunca de onde investir.
+// Dicas
 function insights(rows, view = currentView()) {
   const m = ymNow();
   const s = summary(m, view);
@@ -1048,10 +1024,9 @@ function forecastChart(rows) {
   const vals = rows.map((r) => r.sobra);
   const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals);
   const span = hi - lo || 1;
-  // Folga em cima e embaixo para os valores não encostarem no título nem no nome do mês.
   const H = 270, padTop = hi > 0 ? 26 : 6, padBot = lo < 0 ? 26 : 6;
   const usable = H - padTop - padBot;
-  const zero = padTop + (hi / span) * usable; // linha zero, em px a partir do topo
+  const zero = padTop + (hi / span) * usable;
   const iLo = vals.indexOf(Math.min(...vals)), iHi = vals.indexOf(Math.max(...vals));
   const labeled = iLo === iHi || vals[iLo] === vals[iHi] ? new Set([0]) : new Set([iLo, iHi]);
   const cols = rows.map((r, i) => {
@@ -1111,7 +1086,7 @@ function pagePrevisor() {
   </section>`;
 }
 
-// Outras páginas
+// Páginas
 const pageHead = (title, sub, actions = '') => `<div class="page-head"><div><h2>${title}</h2>${sub ? `<p>${sub}</p>` : ''}</div><div style="display:flex;gap:8px">${actions}</div></div>`;
 const rowActions = (edit, del, id) => `<div class="actions"><button class="icon-btn sm ghost" data-action="${edit}" data-id="${esc(id)}" title="Editar">${I.pencil}</button><button class="icon-btn sm ghost" data-action="${del}" data-id="${esc(id)}" title="Excluir">${I.trash}</button></div>`;
 const recurLabel = (x) => (x.month ? `Só em ${monthShort(x.month)}` : 'Todo mês');
@@ -1124,7 +1099,7 @@ function pageFluxo() {
     ...incomesOf(ui.month, v).map((i) => ({ day: clampDay(i.day, ui.month), name: esc(i.name) + multiName(i.owner), cat: 'Renda', amount: i.amount, income: true })),
     ...s.bills.map((b) => ({ day: b.day, name: esc(b.name) + multiName(b.payer), cat: catInfo(b.category).label, color: catInfo(b.category).color, amount: -b.amount, paid: b.paid })),
   ];
-  // Acerto entre pessoas: quem pagou a mais recebe, quem pagou a menos devolve.
+  // Acerto
   if (s.multi && v !== 'casa') {
     for (const t of s.div.transfers) {
       if (t.from.id === v) rows.push({ day: daysIn(ui.month), name: `Acerto da casa → ${esc(t.to.name)}`, cat: 'Acerto', color: t.to.color, amount: -t.amount, paid: !!data.settled[ui.month], transfer: true });
@@ -1231,8 +1206,7 @@ function backupRestoreForm() {
   });
 }
 
-// Metas de economia
-// Conta o mês atual: uma meta para o próximo mês ainda tem dois meses para juntar.
+// Metas
 function monthsUntil(ym) {
   const [y, m] = ymParts(ym), [ny, nm] = ymParts(ymNow());
   return (y - ny) * 12 + (m - nm) + 1;
@@ -1364,9 +1338,8 @@ function pageConfig() {
 
 const PAGES = { visao: pageVisao, fluxo: pageFluxo, cartoes: pageCartoes, casa: pageCasa, reserva: pageReserva, metas: pageMetas, previsor: pagePrevisor, renda: pageRenda, contas: pageContas, config: pageConfig };
 
-// O app redesenha tudo a cada mudança; a animação de entrada só roda quando a aba, o mês ou a visão mudam.
+// Render
 let shown = { screen: '', page: '', pop: null };
-// Fio de prumo: linha com o peso na ponta. Usado na aba aberta e no selo do Saldo previsto.
 const PLUMB_SVG = '<svg viewBox="0 0 10 22"><path d="M5 0v14" stroke="currentColor" stroke-width="1.5"/><circle cx="5" cy="17.5" r="3.6" fill="currentColor"/></svg>';
 function render() {
   if (ui.page !== 'config') backupFetched = false;
@@ -1380,9 +1353,8 @@ function render() {
   $('#app').innerHTML = `${sidebar()}<main class="main${entering ? ' enter' : ''}">${topbar()}${monthStrip()}${PAGES[ui.page]()}</main>`;
   if (ui.pop && ui.pop !== shown.pop) { const p = $('.popover'); if (p) p.classList.add('in'); }
   shown = { screen, page: ui.page, pop: ui.pop };
-  PrumoVoice.place(focus); // antes de restaurar a rolagem, para a altura da página já estar certa
+  PrumoVoice.place(focus);
   $('.main').scrollTop = scroll;
-  // No celular a faixa de meses rola de lado: mantém o mês escolhido no centro.
   const strip = $('.m-strip-row'), chosen = strip && strip.querySelector('.on');
   if (chosen) strip.scrollLeft += chosen.getBoundingClientRect().left - strip.getBoundingClientRect().left - (strip.clientWidth - chosen.offsetWidth) / 2;
 }
@@ -1415,7 +1387,6 @@ function formModal({ title, lead, fields, submit = 'Salvar', danger = false, onS
   const form = $('#mform');
   const first = form.querySelector('input:not([type=checkbox]), select');
   if (first) setTimeout(() => first.focus(), 30);
-  // Campos que só aparecem quando outro campo tem certo valor (ex.: "Qual categoria?" quando é Outros).
   const conditional = fields.flat().filter((f) => f.showIf);
   const isShown = (f) => (typeof f.showIf === 'function' ? f.showIf(form) : form.elements[f.showIf[0]].value === f.showIf[1]);
   const syncConditional = (changed) => conditional.forEach((f) => {
@@ -1424,7 +1395,6 @@ function formModal({ title, lead, fields, submit = 'Salvar', danger = false, onS
     const was = wrap.style.display !== 'none';
     const show = isShown(f);
     wrap.style.display = show ? '' : 'none';
-    // Esconde a linha inteira quando todos os campos dela estão escondidos.
     const row = wrap.closest('.field-row');
     if (row) row.style.display = [...row.querySelectorAll('.field')].some((x) => x.style.display !== 'none') ? '' : 'none';
     if (show && !was && changed && typeof f.showIf !== 'function') el.focus();
@@ -1464,7 +1434,6 @@ function confirmModal(title, text, okLabel, onOk) {
 
 // Formulários
 const defaultPerson = () => { const v = currentView(); return v === 'casa' ? people()[0].id : v; };
-// Campos "de quem é / quem paga": só aparecem com 2 ou mais pessoas.
 function whoFields(scope, payer, scopeLabel = 'Divisão', payerLabel = 'Quem paga') {
   if (!isMulti()) return [];
   return [[
@@ -1671,7 +1640,6 @@ function setPaid(m, id, now) {
   data.payments[m] ||= {};
   if (!!data.payments[m][id] === now) return;
   if (now) data.payments[m][id] = true; else delete data.payments[m][id];
-  // Contas da categoria "Reserva" alimentam o saldo da reserva.
   const b = data.bills.find((x) => x.id === id);
   if (b && b.category === 'reserva') {
     const key = `${m}:${id}`;
@@ -1689,10 +1657,9 @@ function setPaid(m, id, now) {
 }
 
 // Importar extrato
-let imp = null; // estado da tela de revisão
+let imp = null;
 const IGNORE_RE = /(pagamento (de |da )?fatura|pagto fatura|pagamento recebido|transf(erencia)? entre contas|aplicacao|resgate|estorno)/;
 
-// Arquivo solto na área de envio da conversa. Segue as mesmas regras do escolhido pela janela do Windows.
 async function importDropped(file) {
   if (!/\.(ofx|qfx|csv|txt)$/i.test(file.name)) { toast('Use um arquivo OFX ou CSV'); return; }
   if (file.size > 5 * 1024 * 1024) { toast('Arquivo grande demais (máximo 5 MB).'); return; }
@@ -1712,7 +1679,6 @@ async function startImport(given) {
     formModal({ title: 'Não reconheci esse extrato', lead: 'Use o arquivo <b>OFX</b> (o mais confiável) ou <b>CSV</b> que o app ou site do banco oferece em "Exportar extrato". PDF e imagem não funcionam.', fields: [], submit: 'Entendi', onSubmit: () => {} });
     return;
   }
-  // Extrato de cartão costuma trazer as compras como valores positivos.
   const positives = parsed.rows.filter((r) => r.amount > 0).length;
   const invert = parsed.kind === 'CSV' && positives / parsed.rows.length > 0.7;
   const lastMonth = parsed.rows.map((r) => r.date.slice(0, 7)).sort().pop();
@@ -1815,8 +1781,7 @@ function applyImport() {
   toast(parts.length ? `Importado: ${parts.join(', ')}` : 'Nada foi registrado');
 }
 
-// Comandos de voz
-// Histórico da conversa: fica junto dos dados (e criptografado, se houver senha).
+// Conversa
 const CHAT_MAX = 300;
 let lastUndo = null;
 function chatLog(who, text, via, ok = true, attach) {
@@ -1854,7 +1819,7 @@ function scoreAnswer(score) {
   return msg;
 }
 
-// Responde perguntas sobre os próximos 6 meses. Faz só contas: nada é lançado.
+// Previsão
 function forecastAnswer(c) {
   const view = currentView();
   const rows = forecast(view);
@@ -1926,7 +1891,7 @@ function forecastAnswer(c) {
   }
 }
 
-// Respostas prontas da conversa. Valores sempre vêm das contas do app.
+// Respostas
 function chatReply(intent, text) {
   const say = (...options) => ({ ok: true, stay: true, msg: options[Math.floor(Math.random() * options.length)] });
   const exemplos = 'Posso lançar gastos ("gastei 30 no almoço"), marcar contas pagas, responder "como fica fevereiro?" ou receber seu extrato.';
@@ -1970,7 +1935,7 @@ function confirmLabel(c) {
   }
 }
 
-let pendingCmd = null; // comando esperando um "sim"
+let pendingCmd = null;
 function runVoice(text) {
   let c = VoiceCommands.understand(text, { bills: billsOf(ui.month).map((b) => ({ id: b.id, name: b.name, paid: b.paid })), months: MESES, goals: data.goals.map((g) => ({ id: g.id, name: g.name, paid: false })) }, window.classifyIntent);
   const waiting = pendingCmd && pendingCmd.month === ui.month ? pendingCmd.cmd : null;
@@ -2078,8 +2043,7 @@ document.addEventListener('change', (e) => {
 });
 document.addEventListener('click', (e) => { if (imp && e.target.closest('[data-imp-apply]')) applyImport(); });
 
-// Secretário (avisos)
-// Manda para o processo principal a lista de contas em aberto dos próximos dias.
+// Secretário
 function syncSecretary() {
   if (!data || !api.updateSecretary) return;
   const now = ymNow();
@@ -2093,7 +2057,7 @@ function syncSecretary() {
   api.updateSecretary({ ...data.settings.secretary, items, generic: !!store.encrypted }).catch(() => {});
 }
 
-// Pessoas da casa
+// Pessoas
 function removePeople(ids) {
   const keep = people().find((p) => !ids.includes(p.id)).id;
   data.incomes.forEach((i) => { if (ids.includes(i.owner)) i.owner = keep; });
@@ -2105,7 +2069,6 @@ function removePeople(ids) {
 }
 const freeColor = () => (PERSON_COLORS.find(([c]) => !people().some((p) => p.color === c)) || PERSON_COLORS[people().length % PERSON_COLORS.length])[0];
 
-// Escolher quantas pessoas usam o app (no começo ou depois, em Configurações).
 function setupPeople(fresh) {
   const cur = fresh ? [] : people();
   const h = fresh ? { split: 'renda', custom: {} } : data.household;
@@ -2266,7 +2229,6 @@ const ACTIONS = {
   'sec-days': () => formModal({ title: 'Avisar com quantos dias de antecedência?', fields: [{ name: 'd', label: 'Dias antes do vencimento', type: 'number', min: 0, max: 10, value: data.settings.secretary.daysBefore, required: true, hint: '0 = só no dia. Contas atrasadas também aparecem no aviso.' }], onSubmit: (v) => { data.settings.secretary.daysBefore = v.d; commit(); } }),
   'sec-test': async () => { await api.updateSecretary({ ...data.settings.secretary }); syncSecretary(); const r = await api.testSecretary(); toast(r.ok ? (api.mobile ? 'Aviso enviado. Ele chega em instantes.' : 'Aviso enviado — veja no canto da tela') : (api.mobile ? 'O celular não permitiu o aviso. Libere as notificações do Prumo.' : 'O Windows não permitiu o aviso. Confira as notificações do Windows.')); },
   'sample-keep': () => { data.meta.sample = false; commit(); },
-  // Os dados só são apagados quando a pessoa confirma em "Começar" na tela de pessoas.
   'sample-clear': () => setupPeople(true),
   'wipe': () => confirmModal('Apagar todos os dados?', 'Isso remove contas, rendas, cartões e reserva. Não dá para desfazer (a não ser com um backup). Na próxima tela você escolhe quem vai usar o Prumo.', 'Continuar', () => { setTimeout(() => setupPeople(true), 0); }),
   'pw-set': pwSet, 'pw-change': pwChange, 'pw-remove': pwRemove,
@@ -2315,7 +2277,7 @@ document.addEventListener('change', (e) => {
     el.value = v ? moneyInput(v) : '';
     persist();
     const foot = el.closest('table').querySelector('tfoot');
-    if (foot) { // atualiza totais sem redesenhar (mantém o foco)
+    if (foot) {
       const months = [...el.closest('table').querySelectorAll('thead th')].slice(1).map((_, i) => addMonths(ui.month, i));
       foot.innerHTML = `<tr><td>Total</td>${months.map((m) => `<td class="r num">${money(sum(data.cards, (k) => invoiceOf(k, m)))}</td>`).join('')}</tr>`;
     }
@@ -2354,12 +2316,11 @@ function showLock() {
   });
 }
 
-// Avisos dos bancos (só no celular)
+// Avisos dos bancos
 let bankAccess = false, bankBusy = false, bankTimer = null;
 const READ_BANKS = () => BANKS.filter((b) => b[0] !== 'outro');
 const dateOf = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
 
-// Mês da fatura em que a compra entra. A data de fechamento varia; considera 7 dias antes do vencimento.
 function invoiceMonth(card, date) {
   let m = date.slice(0, 7);
   for (let i = 0; i < 3; i++, m = addMonths(m, 1)) {
@@ -2474,7 +2435,7 @@ function bankSave() {
 let sharedHooked = false;
 function start() {
   applyTheme(); render(); syncSecretary(); startBankSync();
-  // Extrato enviado de outro app pelo "Compartilhar" do Android. Só abre com os dados já liberados.
+  // Compartilhar
   if (api.onShared && !sharedHooked) { sharedHooked = true; api.onShared((res) => startImport(res)); }
   PrumoVoice.mountDock({
     handle: (t) => runCommand(t, 'texto'),
@@ -2498,10 +2459,8 @@ async function boot() {
     $('#of').addEventListener('click', () => api.openFolder());
   }
 }
-// A animação só começa com o app já montado, para nenhum trabalho pesado travar o movimento.
 boot().finally(async () => {
   const el = $('#splash');
-  // Voltando do segundo plano, o app abre direto.
   if (api.warmStart && await api.warmStart()) { el.remove(); applyTheme(); return; }
   const wait = (ms) => new Promise((done) => setTimeout(done, ms));
   await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));

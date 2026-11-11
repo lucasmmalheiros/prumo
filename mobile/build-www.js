@@ -1,5 +1,5 @@
 'use strict';
-// Monta a pasta www do celular a partir da mesma interface do computador.
+// Build da pasta www
 const fs = require('fs');
 const path = require('path');
 
@@ -19,14 +19,14 @@ function patch(file, pairs) {
 fs.rmSync(www, { recursive: true, force: true });
 fs.cpSync(src, www, { recursive: true });
 fs.mkdirSync(path.join(www, 'models'), { recursive: true });
-// O empacotador do Android descompacta e renomeia arquivos .gz; com .tgz o modelo chega intacto.
+// Modelo de voz
 fs.copyFileSync(path.join(here, '..', 'models', 'vosk-pt.tar.gz'), path.join(www, 'models', 'vosk-pt.tgz'));
 fs.mkdirSync(path.join(www, 'vendor'), { recursive: true });
 fs.copyFileSync(path.join(here, 'node_modules', 'scrypt-js', 'scrypt.js'), path.join(www, 'vendor', 'scrypt.js'));
 fs.copyFileSync(path.join(here, 'web', 'prumo-mobile.js'), path.join(www, 'prumo-mobile.js'));
 fs.copyFileSync(path.join(here, 'web', 'mobile.css'), path.join(www, 'mobile.css'));
 
-// O Capacitor injeta a ponte com o Android como script dentro da página.
+// Ponte do Capacitor
 patch(path.join(www, 'index.html'), [
   ["script-src 'self';", "script-src 'self' 'unsafe-inline'; connect-src 'self';"],
   ['content="width=device-width, initial-scale=1"', 'content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"'],

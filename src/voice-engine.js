@@ -1,6 +1,5 @@
 'use strict';
-// Roda dentro de um quadro separado: a biblioteca de voz exige permissões que a tela principal,
-// onde ficam os dados financeiros, não concede. Aqui só entra áudio e só sai texto.
+// Motor de voz
 (function () {
   const reply = (m) => parent.postMessage(m, '*');
   let model = null, rec = null, rate = 48000;

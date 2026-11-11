@@ -1,5 +1,5 @@
 'use strict';
-// Ilustrações coloridas (SVG) e ícones de linha usados no app.
+// Ilustrações e ícones
 
 window.ILLU = {
   wallet: `<svg viewBox="0 0 120 110" aria-hidden="true">

@@ -1,6 +1,5 @@
 'use strict';
-// Classificador próprio do Prumo: descobre o que a pessoa quer dizer. Roda inteiro neste computador.
-// Treinado por tools/train-intent.js. Os pesos ficam em intent-model.js.
+// Classificador
 (function () {
   const BITS = 14;
   const DIM = 1 << BITS;
@@ -20,7 +19,6 @@
     return h >>> 0;
   }
 
-  // Palavras, pares de palavras e pedaços de letras (ajudam com erro de digitação e gíria).
   function features(text) {
     const words = clean(text);
     const acc = new Map();

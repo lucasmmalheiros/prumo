@@ -1,6 +1,5 @@
 'use strict';
-// No celular não existe o processo principal do Electron: este arquivo faz o papel dele.
-// O arquivo de dados tem o mesmo formato do computador, para um abrir o que o outro exportou.
+// Ponte do celular
 (function () {
   const Cap = window.Capacitor;
   const call = (plugin, method, opts = {}) => Cap.nativePromise(plugin, method, opts);
@@ -10,7 +9,7 @@
   const KEEP_DAILY = 14, KEEP_MONTHLY = 12;
   const AUTO_RE = /^prumo-auto-(\d{4}-\d{2}-\d{2})\.json$/;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  // Apps de cada banco na Play Store. Só os avisos destes apps podem ser lidos.
+  // Bancos
   const BANK_APPS = {
     nubank: ['com.nu.production'], itau: ['com.itau'], bradesco: ['com.bradesco'], bb: ['br.com.bb.android'],
     caixa: ['br.com.gabba.Caixa', 'br.gov.caixa.tem'], santander: ['com.santander.app'], inter: ['br.com.intermedium'],
@@ -41,7 +40,7 @@
     return parseRaw(await fs.read(path));
   }
 
-  // Criptografia (scrypt + AES-256-GCM, igual ao computador)
+  // Criptografia
   const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192)); return btoa(s); };
   const unb64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
   const deriveKey = async (password, s) => {
@@ -75,7 +74,7 @@
     await autoBackup();
   }
 
-  // Cópia automática: mesma regra do computador
+  // Backup
   const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   async function listBackups() {
     const names = await fs.list(BACKUPS);
@@ -95,7 +94,7 @@
     if (!force && await fs.exists(target)) return true;
     try {
       const text = await fs.read(FILE);
-      parseRaw(text); // nunca guarda uma cópia de um arquivo corrompido por cima das boas
+      parseRaw(text);
       await fs.write(target, text);
       await pruneBackups();
       backupError = null;
@@ -108,7 +107,7 @@
   }
   async function purgeBackups() { for (const b of await listBackups()) await fs.remove(`${BACKUPS}/${b.name}`); }
 
-  // Escolher e enviar arquivos
+  // Arquivos externos
   const SHARE_ERRORS = { grande: 'Arquivo grande demais (máximo 5 MB).', arquivo: 'Envie o arquivo do extrato, em OFX ou CSV.', leitura: 'Não consegui abrir esse arquivo.' };
   function decodeText(buf) {
     const text = new TextDecoder('utf-8').decode(buf);
@@ -137,7 +136,7 @@
     for (const n of names) if (/^prumo-backup-.*\.json$/.test(n)) await call('Filesystem', 'deleteFile', { path: n, directory: CACHE }).catch(() => {});
   }
 
-  // Avisos de vencimento: agenda um resumo diário, às 9h, para os próximos dias
+  // Avisos de vencimento
   const NOTIF_BASE = 7000, NOTIF_DAYS = 14;
   let lastCfg = null, notifTimer = null;
   const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -259,7 +258,6 @@
     bankInbox: () => call('BankNotifications', 'list').then((r) => r.items.map((i) => ({ ...i, bank: Object.keys(BANK_APPS).find((k) => BANK_APPS[k].includes(i.pkg)) || null }))),
     bankAck: (ids) => call('BankNotifications', 'ack', { ids }),
     setTheme: async (dark) => {
-      // Durante a abertura, a barra de status acompanha o azul da tela.
       const splash = !!document.querySelector('#splash:not(.out)');
       await call('StatusBar', 'setBackgroundColor', { color: splash ? '#3b76f6' : dark ? '#0b1020' : '#eef1f7' }).catch(() => {});
       await call('StatusBar', 'setStyle', { style: splash || dark ? 'DARK' : 'LIGHT' }).catch(() => {});
@@ -289,7 +287,6 @@
     },
     testSecretary: async () => {
       if (!(await allowed(true))) return { ok: false };
-      // Sem horário marcado, o Android mostra na hora.
       await call('LocalNotifications', 'schedule', { notifications: [{ id: NOTIF_BASE + 99, title: 'Prumo', body: 'Os avisos das contas vão aparecer assim.' }] });
       return { ok: true };
     },
@@ -298,7 +295,7 @@
   cleanShared();
   autoBackup();
 
-  // Navegação de celular: abas embaixo e menu lateral
+  // Navegação
   document.documentElement.classList.add('is-mobile');
   const TABS = [['visao', 'Início'], ['fluxo', 'Fluxo'], ['contas', 'Contas'], ['cartoes', 'Cartões']];
   const MENU_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
@@ -339,7 +336,7 @@
     new MutationObserver(sync).observe($('#app'), { childList: true });
     sync();
 
-    // Botão voltar do Android: fecha o que estiver aberto antes de sair do app.
+    // Botão voltar
     Cap.nativeCallback('App', 'addListener', { eventName: 'backButton' }, () => {
       const esc = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       if (document.body.classList.contains('m-drawer')) return setDrawer(false);

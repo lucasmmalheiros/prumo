@@ -1,7 +1,6 @@
 'use strict';
-// Treina o classificador da conversa e grava src/intent-model.js.
-// Uso: node tools/train-intent.js [arquivo-de-avaliacao.json]
-// O arquivo de avaliação é uma lista de [frase, intenção esperada]; só serve para medir, nunca para treinar.
+// Treino
+// Uso: node tools/train-intent.js [avaliacao.json]
 const fs = require('fs');
 const path = require('path');
 const Intent = require('../src/intent.js');
@@ -20,7 +19,7 @@ function expand(tpl) {
   return s.replace(/\$([AIMBSN])/g, (_, k) => pick(SLOTS[k])).replace(/\s+/g, ' ').trim();
 }
 
-// Como a pessoa escreve de verdade: com erro de digitação, abreviações e cumprimento antes do pedido.
+// Variações
 function typo(s) {
   if (s.length < 5) return s;
   const i = 1 + Math.floor(rnd() * (s.length - 2));
@@ -54,7 +53,7 @@ const data = [];
 for (let c = 0; c < n; c++) {
   const seen = new Set();
   for (let tries = 0; seen.size < PER_CLASS && tries < PER_CLASS * 40; tries++) seen.add(sample(classes[c]));
-  // Classes com poucas frases possíveis repetem até equilibrar.
+  // Balanceamento
   const list = [...seen];
   for (let i = 0; i < PER_CLASS; i++) { const s = list[i % list.length]; data.push([Intent.features(s), c]); }
   console.log(classes[c].padEnd(18), 'frases distintas:', list.length);
