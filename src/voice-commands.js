@@ -180,7 +180,19 @@
     return null;
   }
 
+  // O reconhecimento de voz às vezes erra "paguei"/"pagar"
+  const W = (body) => new RegExp(`(?<![a-zà-ú])(?:${body})(?![a-zà-ú])`, 'gi');
+  const HEARD = [
+    [W('(?:p?a|ba) gu?ei'), 'paguei'],
+    [W('pagu?e [ei]'), 'paguei'],
+    [W('pagei|paguey|pagui|pagué|paguê|pegue|peguei(?! empresta)'), 'paguei'],
+    [W('pague'), 'paguei'],
+    [W('pagá|pagah|pegar(?= (?:a|o|as|os) (?:conta|boleto|fatura))'), 'pagar'],
+  ];
+  const heard = (text) => HEARD.reduce((s, [re, to]) => s.replace(re, to), String(text));
+
   function parse(text, ctx = {}) {
+    text = heard(text);
     const tk = tokenize(text);
     const t = tk.toks.join(' ');
     if (!t) return { type: 'unknown' };
@@ -248,7 +260,7 @@
       return f.options ? { type: 'need', reason: 'qual', options: f.options } : { type: 'need', reason: 'conta' };
     }
 
-    const payVerb = /\b(paguei|pagar|paga|pago|quitei|quitar|marca\w*|baixa)\b/.test(t);
+    const payVerb = /\b(paguei|pagar|paga|pago|pagou|pagamos|pagando|pagaram|quitei|quitar|marca\w*|baixa)\b/.test(t);
     if (payVerb) {
       const f = findBill(tk.toks, bills, false);
       if (f.bill) return { type: 'pay', bill: f.bill };
@@ -315,6 +327,7 @@
   }
 
   function understand(text, ctx = {}, classify) {
+    text = heard(text);
     const rule = parse(text, ctx);
     if (!classify) return rule;
     const tk = tokenize(text);
@@ -338,7 +351,7 @@
     return direto ? cmd : { type: 'confirm', cmd };
   }
 
-  const VoiceCommands = { parse, understand };
+  const VoiceCommands = { parse, understand, heard };
   if (typeof module !== 'undefined' && module.exports) module.exports = VoiceCommands;
   else window.VoiceCommands = VoiceCommands;
 })();

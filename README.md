@@ -31,14 +31,14 @@ Os dados ficam só no aparelho. Não há conta, servidor nem sincronização em 
 
 ## Funcionalidades
 
-- **Visão geral do mês**: saldo previsto, quanto da renda fica livre, contas a pagar por dia de vencimento e gastos por categoria.
+- **Visão geral do mês**: saldo previsto (somando o que sobrou do mês anterior, para contas que vencem antes do salário), quanto da renda fica livre, contas a pagar por dia de vencimento e gastos por categoria.
 - **Cartões**: cadastro com as cores de 15 bancos brasileiros, faturas mês a mês e limite livre.
 - **Assinaturas**: streaming, música, nuvem e afins, com o custo por mês e por ano e a próxima cobrança de cada uma. Podem ser pagas no cartão (entram na fatura) ou por Pix/boleto, e são reconhecidas ao importar o extrato.
 - **Previsor**: nota de saúde financeira de 0 a 100, explicada item por item, e projeção da sobra nos próximos seis meses.
 - **Minha casa**: contas divididas entre duas ou mais pessoas, com a parte justa de cada uma e quem deve devolver para quem.
 - **Reserva e metas**: acompanhamento da reserva de emergência (em meses de gastos cobertos) e metas de economia com prazo.
 - **Conversa por texto ou voz**: frases como *"gastei 30 no almoço"*, *"paguei o aluguel"* ou *"como fica fevereiro?"* viram lançamentos ou respostas com os números do app. Quando a frase é ambígua, o Prumo pergunta antes de alterar qualquer dado.
-- **Importação de extratos**: arquivos PDF, OFX e CSV dos bancos e faturas de cartão. O Prumo reconhece cerca de 1.500 lojas e serviços do dia a dia (Uber, iFood, mercados, farmácias, escolas...) e já marca a categoria. Os lançamentos reconhecidos ficam separados dos que precisam de conferência, e o app lembra das escolhas feitas nos que ele não conhecia, inclusive para nomes parecidos e pelo CNPJ. Também reconhece assinaturas, contas já cadastradas e boletos que se repetem todo mês (que viram contas fixas). Quando uma conta fixa não aparece no extrato, o app pergunta o que aconteceu. No Android, o extrato pode ser enviado direto de outro app pelo menu *Compartilhar*.
+- **Importação de extratos**: arquivos PDF, OFX e CSV dos bancos e faturas de cartão. O Prumo reconhece cerca de 1.500 lojas e serviços do dia a dia (Uber, iFood, mercados, farmácias, escolas...) e já marca a categoria. Os lançamentos reconhecidos ficam separados dos que precisam de conferência, e o app lembra das escolhas feitas nos que ele não conhecia, inclusive para nomes parecidos e pelo CNPJ. Ao escolher a categoria de um lançamento, os outros do mesmo lugar no extrato são marcados junto. Também reconhece assinaturas, contas já cadastradas e boletos que se repetem todo mês (que viram contas fixas). Quando uma conta fixa não aparece no extrato, o app pergunta o que aconteceu. No Android, o extrato pode ser enviado direto de outro app pelo menu *Compartilhar*.
 - **Avisos de vencimento**: resumo diário das contas que vencem nos próximos dias.
 - **Tema claro, escuro ou automático**, acompanhando o sistema.
 

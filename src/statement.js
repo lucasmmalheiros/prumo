@@ -175,6 +175,20 @@
     return best;
   }
 
+  // Mesmo lugar: mesmo CNPJ, mesmo nome, ou mesma primeira palavra que identifica (não genérica)
+  // Palavras de tipo de lugar (não dizem qual é o lugar)
+  const PLACE = /^(mercad|supermerc|hipermerc|atacad|minimerc|mercearia|farmac|drogaria|droga|posto|auto|padaria|panificadora|restaurante|lanchonete|lanches|bar|hotel|pousada|loja|lojas|magazine|comercial|colegio|escola|faculdade|curso|academia|clinica|hospital|laboratorio|salao|barbearia|pet|petshop|acougue|hortifruti|sacolao|distribuidora|conveniencia|papelaria|livraria|otica|oficina|estacionamento|cafe|cafeteria|pizzaria|churrascaria|sorveteria|doceria|confeitaria|casa|centro|shopping|super|mini)/;
+  const leadWord = (desc) => { const w = words(merchantKey(desc))[0] || ""; return w.length >= 3 && !PLACE.test(w) ? w : ""; };
+  function sameMerchant(a, b) {
+    const ca = cnpjRoot(a);
+    if (ca && ca === cnpjRoot(b)) return true;
+    const ka = merchantKey(a);
+    if (ka.length >= 3 && ka === merchantKey(b)) return true;
+    if (isPerson(a) || isPerson(b)) return false; // pessoa: só nome completo
+    const la = leadWord(a);
+    return !!la && la === leadWord(b);
+  }
+
   // learned: { nome ou cnpj: categoria } aprendido com o que a pessoa escolheu antes
   function guessCategory(desc, learned) {
     const mine = learnedFor(desc, learned);
@@ -274,6 +288,6 @@
     return wb.some((w) => wa.has(w) || [...wa].some((x) => x.startsWith(w) || w.startsWith(x)));
   }
 
-  const api = { parse, parsePDFLines, parseAmount, parseDate, guessCategory, merchantKey, learnKeys, cnpjRoot, isPerson, similar, norm };
+  const api = { parse, parsePDFLines, parseAmount, parseDate, guessCategory, merchantKey, learnKeys, sameMerchant, cnpjRoot, isPerson, similar, norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Statement = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -343,6 +343,20 @@ function division(m) {
   return { house, total, rows, transfers, shares: sh };
 }
 
+// Saldo que sobrou dos meses anteriores (nunca negativo), a partir do primeiro mês com dados
+function firstDataMonth() {
+  const ms = [...Object.keys(data.spending).filter((k) => data.spending[k].length), ...Object.keys(data.payments).filter((k) => Object.keys(data.payments[k] || {}).length), ...data.incomes.map((i) => i.month || i.start).filter(Boolean), ...data.bills.map((b) => b.month || b.start).filter(Boolean)];
+  return ms.sort()[0] || ymNow();
+}
+function carryIn(m, view = currentView()) {
+  let k = firstDataMonth();
+  const from = addMonths(m, -12);
+  if (k < from) k = from;
+  let acc = 0;
+  for (; k < m; k = addMonths(k, 1)) acc = Math.max(0, acc + summary(k, view).sobra);
+  return Math.round(acc * 100) / 100;
+}
+
 function summary(m, view = currentView()) {
   const all = billsOf(m);
   const multi = isMulti();
@@ -557,10 +571,12 @@ function cardSaldo(s) {
     ['Dia a dia', s.daily, 'var(--gray-seg)'],
   ];
   const livre = pct(s.sobra, s.income);
+  const carry = s.income ? carryIn(s.m, s.view) : 0;
   let trend;
   if (!s.income) trend = `<div class="trend warn">${I.info}Cadastre sua renda</div><button class="link-btn" data-action="nav" data-page="renda">Vá em ${L('Minha renda', 'Nossa renda')} para começar</button>`;
-  else if (s.sobra < 0) trend = `<div class="trend bad">${I.arrowDown}Gastos passam a renda</div><div class="label">faltam ${money(-s.sobra)} para fechar o mês</div>`;
-  else trend = `<div class="trend ${livre < 10 ? 'warn' : ''}">${I.arrowUp}${fmtPct(livre)} da renda livre</div><div class="label">valor estimado após pagar todas as contas</div>`;
+  else if (s.sobra < 0 && carry + s.sobra >= 0) trend = `<div class="trend warn">${I.info}Gastos passam a renda do mês</div><div class="label">o que sobrou antes (${money(carry)}) cobre a diferença de ${money(-s.sobra)}</div>`;
+  else if (s.sobra < 0) trend = `<div class="trend bad">${I.arrowDown}Gastos passam a renda</div><div class="label">faltam ${money(-s.sobra - carry)} para fechar o mês${carry > 0.005 ? ` mesmo usando o que sobrou antes (${money(carry)})` : ""}</div>`;
+  else trend = `<div class="trend ${livre < 10 ? 'warn' : ''}">${I.arrowUp}${fmtPct(livre)} da renda livre</div><div class="label">valor estimado após pagar todas as contas${carry > 0.005 ? ` · mais ${money(carry)} que sobrou antes` : ""}</div>`;
 
   const level = !s.income ? null : s.sobra < 0 ? ['fora', 'Fora do prumo'] : livre < 10 ? ['quase', 'Quase no prumo'] : ['ok', 'No prumo'];
   const plumb = level ? `<span class="plumb-tag ${level[0]}" title="${livre >= 10 ? 'Sobram 10% ou mais da renda' : 'O ideal é sobrar pelo menos 10% da renda'}"><i class="plumb-ico">${PLUMB_SVG}</i>${level[1]}</span>` : '';
@@ -1153,15 +1169,17 @@ function pageFluxo() {
   rows.sort((a, b) => a.day - b.day || (b.income ? 1 : 0) - (a.income ? 1 : 0));
   const rest = s.daily - s.dailyActual;
   if (rest > 0.005) rows.push({ day: null, name: s.dailyActual ? `Dia a dia · restante do orçamento (já gastou ${money(s.dailyActual)} de ${money(s.dailyBudget)})` : 'Dia a dia (orçamento do mês)', cat: 'Dia a dia', color: CATS.diaadia.color, amount: -rest });
+  const carry = carryIn(ui.month, v);
+  if (carry > 0.005) rows.unshift({ day: 1, name: `Sobrou de ${monthLong(addMonths(ui.month, -1)).toLowerCase()}`, cat: "Saldo anterior", amount: carry, income: true, carry: true });
   let run = 0;
   return `<section class="card">${pageHead(`Fluxo de caixa · ${monthLong(ui.month)}${s.multi ? ` · ${esc(viewName(v))}` : ''}`, 'Entradas e saídas do mês em ordem de data, com o saldo acumulado.', `<button class="btn" data-action="import-statement">${I.upload}Importar extrato</button>`)}
     <div class="stat-row" style="margin-bottom:18px">
       <div class="card stat"><div class="label">Entradas</div><div class="v num pos">${money(s.income)}</div></div>
       <div class="card stat"><div class="label">Saídas previstas</div><div class="v num">${money(s.spent)}</div></div>
-      <div class="card stat"><div class="label">Saldo do mês</div><div class="v num ${s.sobra < 0 ? 'negc' : 'pos'}">${money(s.sobra)}</div></div>
+      <div class="card stat"><div class="label">Saldo do mês</div><div class="v num ${s.sobra < 0 ? 'negc' : 'pos'}">${money(s.sobra)}</div>${carry > 0.005 ? `<div class="label" style="margin-top:4px">com o que sobrou antes: <b>${money(s.sobra + carry)}</b></div>` : ""}</div>
     </div>
     <table class="table"><thead><tr><th>Dia</th><th>Descrição</th><th>Categoria</th><th>Situação</th><th class="r">Valor</th><th class="r">Saldo</th></tr></thead><tbody>
-      ${rows.map((r) => { run += r.amount; return `<tr class="${r.income ? 'income' : ''}"><td class="num">${r.day ? pad2(r.day) : '—'}</td><td>${r.name}</td><td>${r.income ? `<span class="cat-dot"><span class="dot" style="background:var(--green)"></span>${r.cat}</span>` : `<span class="cat-dot"><span class="dot" style="background:${r.color}"></span>${r.cat}</span>`}</td><td>${r.transfer ? `<span class="tag ${data.settled[ui.month] ? 'ok' : 'info'}">${data.settled[ui.month] ? 'Acertado' : 'Pix a fazer'}</span>` : r.income ? '<span class="tag ok">Entrada</span>' : r.day === null ? '<span class="tag info">Estimado</span>' : r.spend ? '<span class="tag neutral">Do extrato</span>' : r.paid ? '<span class="tag ok">Paga</span>' : '<span class="tag soon">A pagar</span>'}</td><td class="r amt num">${r.amount >= 0 ? '+ ' : '− '}${money(Math.abs(r.amount))}</td><td class="r num ${run < 0 ? 'negc' : ''}">${money(run)}</td></tr>`; }).join('') || `<tr><td colspan="6" class="empty-note">Nada lançado neste mês.</td></tr>`}
+      ${rows.map((r) => { run += r.amount; return `<tr class="${r.income ? 'income' : ''}"><td class="num">${r.day ? pad2(r.day) : '—'}</td><td>${r.name}</td><td>${r.income ? `<span class="cat-dot"><span class="dot" style="background:var(--green)"></span>${r.cat}</span>` : `<span class="cat-dot"><span class="dot" style="background:${r.color}"></span>${r.cat}</span>`}</td><td>${r.transfer ? `<span class="tag ${data.settled[ui.month] ? 'ok' : 'info'}">${data.settled[ui.month] ? 'Acertado' : 'Pix a fazer'}</span>` : r.carry ? '<span class="tag neutral">Mês passado</span>' : r.income ? '<span class="tag ok">Entrada</span>' : r.day === null ? '<span class="tag info">Estimado</span>' : r.spend ? '<span class="tag neutral">Do extrato</span>' : r.paid ? '<span class="tag ok">Paga</span>' : '<span class="tag soon">A pagar</span>'}</td><td class="r amt num">${r.amount >= 0 ? '+ ' : '− '}${money(Math.abs(r.amount))}</td><td class="r num ${run < 0 ? 'negc' : ''}">${money(run)}</td></tr>`; }).join('') || `<tr><td colspan="6" class="empty-note">Nada lançado neste mês.</td></tr>`}
     </tbody></table></section>`;
 }
 
@@ -2279,7 +2297,18 @@ document.addEventListener('change', (e) => {
   else if (k === 'card') imp.cardId = el.value;
   else if (k === 'cardMonth') imp.cardMonth = el.value;
   else if (k === 'action') imp.rows[el.dataset.i].action = el.value;
-  else if (k === 'cat') imp.rows[el.dataset.i].cat = el.value;
+  else if (k === 'cat') {
+    const r = imp.rows[el.dataset.i];
+    r.cat = el.value; r.manual = true;
+    // os iguais (mesmo lugar ou mesmo CNPJ) que você ainda não mexeu recebem a mesma categoria
+    let n = 0;
+    for (const x of imp.rows) {
+      if (x === r || x.manual || x.dup) continue;
+      const same = Statement.sameMerchant(r.desc, x.desc);
+      if (same) { x.cat = el.value; if (['ignorar'].includes(x.action) === false && x.cat !== 'outros') x.auto = true; n++; }
+    }
+    if (n) toast(`${n} ${n === 1 ? 'lançamento igual também foi marcado' : 'lançamentos iguais também foram marcados'} como ${catInfo(el.value).label}`);
+  }
   else if (k === 'miss') imp.missing[el.dataset.i].answer = el.value;
   const scroll = $('.imp-table')?.scrollTop || 0;
   renderImport();
